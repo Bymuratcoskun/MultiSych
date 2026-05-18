@@ -1,0 +1,15 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MultiSych.Desktop.ViewModels"
+             x:Class="MultiSych.Desktop.Views.ErrorReportView"
+             x:DataType="vm:ErrorReportViewModel">
+    <Grid RowDefinitions="Auto, *, Auto" Margin="30">
+        <Grid Grid.Row="0" ColumnDefinitions="*, Auto, Auto" Margin="0,0,0,20">
+            <TextBlock Grid.Column="0" Text="System Logs &amp; Error Reports" FontSize="28" FontWeight="Bold" Foreground="{DynamicResource SystemAccentColor}" VerticalAlignment="Center"/>
+            <Button Grid.Column="1" Command="{Binding RefreshCommand}" Content="Refresh Logs" Margin="0,0,10,0" CornerRadius="6"/>
+            <Button Grid.Column="2" Command="{Binding OpenReportsFolderCommand}" Content="Open Reports Folder" CornerRadius="6" Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"/>
+        </Grid>
+        
+        <TextBox Grid.Row="1" Text="{Binding LogContent}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" FontFamily="Consolas, Monospace" FontSize="13" CornerRadius="8" Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" BorderThickness="0" Padding="15"/>
+    </Grid>
+</UserControl>

@@ -1,0 +1,38 @@
+# .NET Core
+bin/
+obj/
+
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Environment and Secrets (ÇOK ÖNEMLİ)
+.env
+multisych-security.env
+Tokens/
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+Database/
+
+# Whisper.net AI Model (Çok büyük dosya, GitHub'a gitmemeli)
+ggml-base.bin
+
+# Application Data
+logs/
+Reports/
+Drives/
+
+# IDE and Tools
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.vs/

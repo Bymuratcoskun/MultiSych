@@ -1,0 +1,59 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:MultiSych.Desktop.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="650"
+        x:Class="MultiSych.Desktop.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="MultiSych"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource SystemRegionBrush}">
+
+    <Grid ColumnDefinitions="250, *">
+        <!-- Sol Menü (Sidebar) -->
+        <Border Grid.Column="0" Background="{DynamicResource SystemChromeLowColor}" BorderBrush="{DynamicResource SystemChromeHighColor}" BorderThickness="0,0,1,0">
+            <Grid RowDefinitions="Auto, *, Auto">
+                <StackPanel Grid.Row="0" Margin="20">
+                    <TextBlock Text="MultiSych" FontSize="26" FontWeight="Bold" Margin="0,0,0,5" Foreground="{DynamicResource SystemAccentColor}"/>
+                    <TextBlock Text="Sync &amp; AI Platform" FontSize="12" Foreground="{DynamicResource SystemBaseMediumColor}" Margin="0,0,0,20"/>
+                </StackPanel>
+
+                <!-- Navigasyon Menüsü -->
+                <ItemsControl Grid.Row="1" ItemsSource="{Binding NavigationItems}" Margin="10,0">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:NavigationItem">
+                            <Button Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).NavigateCommand}" 
+                                    CommandParameter="{Binding Section}"
+                                    Background="Transparent" 
+                                    HorizontalAlignment="Stretch" 
+                                    Margin="0,2" Padding="10,12"
+                                    CornerRadius="8">
+                                <StackPanel Orientation="Horizontal" Spacing="15">
+                                    <TextBlock Text="{Binding IconGlyph}" FontSize="18" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Label}" FontSize="16" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Grid>
+        </Border>
+
+        <!-- Ana İçerik Alanı (Main Content) -->
+        <Grid Grid.Column="1" RowDefinitions="*, Auto">
+            
+            <!-- Seçili Sayfa Burada Gösterilecek (Dashboard, Accounts vb.) -->
+            <ContentControl Grid.Row="0" Content="{Binding CurrentPageViewModel}" Margin="20"/>
+            
+            <!-- Alt Durum Çubuğu (Status Bar) -->
+            <Border Grid.Row="1" Background="{DynamicResource SystemChromeLowColor}" Padding="15,8" BorderBrush="{DynamicResource SystemChromeHighColor}" BorderThickness="0,1,0,0">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <TextBlock Text="Status:" FontWeight="Bold" Foreground="{DynamicResource SystemBaseMediumColor}"/>
+                    <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource SystemBaseMediumColor}"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

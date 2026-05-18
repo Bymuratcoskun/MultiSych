@@ -1,0 +1,57 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MultiSych.Desktop.ViewModels"
+             xmlns:m="using:MultiSych.Services.Models"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="MultiSych.Desktop.Views.AccountsView"
+             x:DataType="vm:AccountsViewModel">
+
+    <Grid RowDefinitions="Auto, *, Auto" Margin="30">
+        
+        <!-- Üst Başlık ve Yenile Butonu -->
+        <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,20">
+            <TextBlock Grid.Column="0" Text="Connected Accounts" FontSize="28" FontWeight="Bold" VerticalAlignment="Center" Foreground="{DynamicResource AccentBrush}" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+                <Button Command="{Binding AddGoogleAccountCommand}" Content="+ Google" Background="#DB4437" Foreground="White" VerticalAlignment="Center" Padding="15,10" CornerRadius="8" Cursor="Hand"/>
+                <Button Command="{Binding AddMicrosoftAccountCommand}" Content="+ Microsoft" Background="#0078D4" Foreground="White" VerticalAlignment="Center" Padding="15,10" CornerRadius="8" Cursor="Hand"/>
+                <Button Command="{Binding AddYandexAccountCommand}" Content="+ Yandex" Background="#FFCC00" Foreground="Black" VerticalAlignment="Center" Padding="15,10" CornerRadius="8" Cursor="Hand"/>
+                <Button Command="{Binding RefreshCommand}" Content="Refresh" Background="{DynamicResource AccentBrush}" Foreground="{DynamicResource AccentTextBrush}" VerticalAlignment="Center" Padding="20,10" CornerRadius="8" Cursor="Hand"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Hesaplar Listesi -->
+        <ScrollViewer Grid.Row="1">
+            <ItemsControl ItemsSource="{Binding Accounts}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="m:AccountCredentials">
+                        <Border Background="{DynamicResource CardBackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="12" Padding="20" Margin="0,0,0,15">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <!-- Hesap Bilgileri -->
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Provider}" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" />
+                                    <TextBlock Text="{Binding Email}" FontSize="14" Opacity="0.7" Margin="0,5,0,0" Foreground="{DynamicResource TextBrush}" />
+                                </StackPanel>
+                                
+                                <!-- Aksiyon Butonları -->
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                    <Button Command="{Binding $parent[UserControl].((vm:AccountsViewModel)DataContext).MountDriveCommand}" CommandParameter="{Binding}" Content="Mount Drive" CornerRadius="6" Background="{DynamicResource AccentBrush}" Foreground="{DynamicResource AccentTextBrush}"/>
+                                    <Button Command="{Binding $parent[UserControl].((vm:AccountsViewModel)DataContext).UnmountDriveCommand}" CommandParameter="{Binding}" Content="Unmount" CornerRadius="6" Background="Transparent" Foreground="{DynamicResource TextBrush}"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <!-- Alt Durum Mesajı -->
+        <Border Grid.Row="2" Background="{DynamicResource CardBackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="15" Margin="0,15,0,0">
+            <StackPanel>
+                <TextBlock Text="{Binding StatusMessage}" FontStyle="Italic" Opacity="0.8" Foreground="{DynamicResource TextBrush}" />
+            </StackPanel>
+        </Border>
+        
+    </Grid>
+</UserControl>

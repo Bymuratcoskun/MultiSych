@@ -1,0 +1,30 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="MultiSych.Desktop.Views.ConfirmationDialog"
+        Title="Confirmation Required" Width="450" Height="220"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        Background="{DynamicResource PrimaryBackgroundBrush}"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="30">
+        
+  <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+    <Grid RowDefinitions="Auto,*,Auto" Margin="20">
+      <!-- Header -->
+      <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10">
+        <TextBlock Text="⚠️" FontSize="24" VerticalAlignment="Center"/>
+        <TextBlock Text="Are you sure?" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource TextBrush}" VerticalAlignment="Center"/>
+      </StackPanel>
+      
+      <!-- Message Body -->
+      <TextBlock x:Name="MessageText" Grid.Row="1" Text="Do you really want to perform this action? This cannot be undone." 
+                 Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap" Opacity="0.8" Margin="0,15,0,0" VerticalAlignment="Top"/>
+      
+      <!-- Action Buttons -->
+      <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="15" HorizontalAlignment="Right">
+        <Button x:Name="CancelButton" Content="Cancel" Width="100" HorizontalContentAlignment="Center" Background="{DynamicResource SecondaryBackgroundBrush}" Foreground="{DynamicResource TextBrush}"/>
+        <Button x:Name="ConfirmButton" Content="Confirm" Width="100" HorizontalContentAlignment="Center" Background="{DynamicResource AccentBrush}" Foreground="{DynamicResource AccentTextBrush}"/>
+      </StackPanel>
+    </Grid>
+  </Border>
+</Window>

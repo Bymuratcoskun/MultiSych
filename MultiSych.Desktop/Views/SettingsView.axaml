@@ -1,0 +1,49 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MultiSych.Desktop.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="MultiSych.Desktop.Views.SettingsView"
+             x:DataType="vm:SettingsViewModel">
+             
+    <ScrollViewer>
+        <StackPanel Margin="30" Spacing="30" MaxWidth="600" HorizontalAlignment="Left">
+            
+            <TextBlock Text="Appearance Settings" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource SystemAccentColor}"/>
+            
+            <!-- Tema ve Karanlık Mod Değiştirici -->
+            <Border Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" CornerRadius="10" Padding="20">
+                <StackPanel Spacing="15">
+                    <Grid ColumnDefinitions="*, Auto">
+                        <TextBlock Grid.Column="0" Text="Dark Mode" FontSize="16" VerticalAlignment="Center"/>
+                        <!-- IsDarkMode özelliğine bağlanan ToggleSwitch -->
+                        <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsDarkMode}" OnContent="On" OffContent="Off"/>
+                    </Grid>
+                    
+                    <Grid ColumnDefinitions="*, Auto">
+                        <TextBlock Grid.Column="0" Text="Theme Style" FontSize="16" VerticalAlignment="Center"/>
+                        <ComboBox Grid.Column="1" ItemsSource="{Binding Themes}" SelectedItem="{Binding SelectedTheme}" Width="150"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+            
+            <TextBlock Text="AI Provider Settings" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource SystemAccentColor}" Margin="0,20,0,0"/>
+            
+            <!-- API Anahtarları -->
+            <Border Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" CornerRadius="10" Padding="20">
+                <StackPanel Spacing="15">
+                    <TextBox UseFloatingPlaceholder="True" PlaceholderText="Copilot API Key" Text="{Binding CopilotApiKey}" PasswordChar="•"/>
+                    <TextBox UseFloatingPlaceholder="True" PlaceholderText="Gemini API Key" Text="{Binding GeminiApiKey}" PasswordChar="•"/>
+                    <TextBox UseFloatingPlaceholder="True" PlaceholderText="Yandex AI API Key" Text="{Binding YandexApiKey}" PasswordChar="•"/>
+                    
+                    <Button Command="{Binding SaveApiKeysCommand}" Content="Save API Keys" HorizontalAlignment="Right" Classes="accent"/>
+                </StackPanel>
+            </Border>
+            
+            <!-- Durum Mesajı -->
+            <TextBlock Text="{Binding SettingsStatus}" Foreground="{DynamicResource SystemAccentColor}" FontStyle="Italic" TextWrapping="Wrap"/>
+            
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

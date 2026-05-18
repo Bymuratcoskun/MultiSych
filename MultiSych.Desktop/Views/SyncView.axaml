@@ -1,0 +1,59 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MultiSych.Desktop.ViewModels"
+             xmlns:m="using:MultiSych.Services.Models"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="MultiSych.Desktop.Views.SyncView"
+             x:DataType="vm:SyncViewModel">
+
+    <Grid RowDefinitions="Auto, *, Auto" Margin="30">
+        
+        <StackPanel Grid.Row="0" Spacing="15" Margin="0,0,0,20">
+            <TextBlock Text="Synchronization Hub" FontSize="28" FontWeight="Bold" Foreground="{DynamicResource SystemAccentColor}"/>
+            
+            <!-- Aksiyon Butonları -->
+            <WrapPanel>
+                <Button Command="{Binding TriggerSyncCommand}" Content="Sync All Accounts" Classes="accent" Padding="20,10" Margin="0,0,15,15" CornerRadius="8" Background="{DynamicResource SystemAccentColor}" Foreground="White"/>
+                <Button Command="{Binding GenerateSuggestionsCommand}" Content="Analyze Emails for Events" Padding="20,10" Margin="0,0,15,15" CornerRadius="8" Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"/>
+            </WrapPanel>
+        </StackPanel>
+
+        <!-- Yapay Zeka Takvim Önerileri -->
+        <ScrollViewer Grid.Row="1" Margin="0,10,0,10">
+            <StackPanel Spacing="15">
+                <!-- Eğer öneri yoksa burası gizlenir, varsa gösterilir (Avalonia IsVisible kontrolüyle yapılabilir ancak şu an ViewModel'de özellik bool değil, count ile idare edebiliriz) -->
+                <TextBlock Text="AI Calendar Suggestions" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                
+                <ItemsControl ItemsSource="{Binding AiSuggestions}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="m:CalendarEvent">
+                            <Border Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" CornerRadius="12" Padding="20" Margin="0,0,0,10">
+                                <Grid ColumnDefinitions="*, Auto">
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="5">
+                                        <TextBlock Text="{Binding Title}" FontSize="18" FontWeight="Bold" />
+                                        <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Opacity="0.8" />
+                                        <StackPanel Orientation="Horizontal" Spacing="10" Opacity="0.6" Margin="0,5,0,0">
+                                            <TextBlock Text="{Binding StartTime, StringFormat='{}{0:g}'}" />
+                                            <TextBlock Text="to" />
+                                            <TextBlock Text="{Binding EndTime, StringFormat='{}{0:g}'}" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                    
+                                    <Button Grid.Column="1" Command="{Binding $parent[UserControl].((vm:SyncViewModel)DataContext).AddSuggestionToCalendarCommand}" CommandParameter="{Binding}" Content="Add to Calendar" VerticalAlignment="Center" CornerRadius="6" Background="{DynamicResource SystemAccentColor}" Foreground="White"/>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Alt Durum Paneli -->
+        <Border Grid.Row="2" Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" Padding="15" CornerRadius="8">
+            <TextBlock Text="{Binding SyncStatus}" FontStyle="Italic" Opacity="0.8" TextWrapping="Wrap"/>
+        </Border>
+        
+    </Grid>
+</UserControl>

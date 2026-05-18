@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=MultiSych
+Comment=Multi-Account Cloud Synchronization Platform
+Exec=multisych
+Icon=multisych
+Terminal=false
+StartupWMClass=MultiSych.Desktop
+Categories=Utility;Office;Network;
+Keywords=cloud;sync;email;calendar;ai;google;microsoft;yandex;

@@ -1,0 +1,49 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MultiSych.Desktop.ViewModels"
+             x:Class="MultiSych.Desktop.Views.DocumentAnalyzerView"
+             x:DataType="vm:DocumentAnalyzerViewModel">
+    <ScrollViewer>
+        <StackPanel Margin="30" Spacing="20">
+            <TextBlock Text="AI Document &amp; Email Analyzer" FontSize="28" FontWeight="Bold" Foreground="{DynamicResource SystemAccentColor}"/>
+            
+            <!-- Sağlayıcı Seçimi -->
+            <Grid ColumnDefinitions="Auto, *" Margin="0,0,0,10">
+                <TextBlock Text="AI Provider:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableProviders}" SelectedItem="{Binding SelectedProvider}" Width="150" CornerRadius="6"/>
+            </Grid>
+
+            <!-- Sekmeli Yapı -->
+            <TabControl>
+                <!-- Belge Özeti -->
+                <TabItem Header="Document Summary">
+                    <StackPanel Spacing="15" Margin="0,15,0,0">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBlock Text="Paste your document or load from file:" VerticalAlignment="Center"/>
+                            <Button Grid.Column="1" Command="{Binding LoadFileCommand}" Content="Load File" CornerRadius="6"/>
+                        </Grid>
+                        <TextBox Text="{Binding DocumentContent}" AcceptsReturn="True" Height="150" TextWrapping="Wrap" CornerRadius="6"/>
+                        <Button Command="{Binding SummarizeCommand}" Content="Summarize Document" HorizontalAlignment="Right" Background="{DynamicResource SystemAccentColor}" Foreground="White" CornerRadius="6"/>
+                        <TextBox Text="{Binding SummaryResult}" IsReadOnly="True" AcceptsReturn="True" Height="150" TextWrapping="Wrap" PlaceholderText="Summary will appear here..." CornerRadius="6" Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"/>
+                    </StackPanel>
+                </TabItem>
+                
+                <!-- E-Posta Analizi -->
+                <TabItem Header="Email Analysis">
+                    <StackPanel Spacing="15" Margin="0,15,0,0">
+                        <TextBox Text="{Binding EmailFrom}" PlaceholderText="From (Sender)" CornerRadius="6"/>
+                        <TextBox Text="{Binding EmailSubject}" PlaceholderText="Subject" CornerRadius="6"/>
+                        <TextBox Text="{Binding EmailBody}" AcceptsReturn="True" Height="100" TextWrapping="Wrap" PlaceholderText="Email Body Content..." CornerRadius="6"/>
+                        <Button Command="{Binding AnalyzeEmailCommand}" Content="Analyze Email" HorizontalAlignment="Right" Background="{DynamicResource SystemAccentColor}" Foreground="White" CornerRadius="6"/>
+                        <TextBox Text="{Binding EmailAnalysisResult}" IsReadOnly="True" AcceptsReturn="True" Height="150" TextWrapping="Wrap" PlaceholderText="Analysis result will appear here..." CornerRadius="6" Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"/>
+                    </StackPanel>
+                </TabItem>
+            </TabControl>
+            
+            <!-- Durum Çubuğu -->
+            <Border Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" Padding="10" CornerRadius="6">
+                <TextBlock Text="{Binding StatusMessage}" FontStyle="Italic" Opacity="0.8"/>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
