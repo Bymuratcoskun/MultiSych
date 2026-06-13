@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="MultiSych.Desktop/MultiSych.Desktop.csproj" />
+  <Project Path="MultiSych.Services/MultiSych.Services.csproj" />
+</Solution>

@@ -1,0 +1,43 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MultiSych.Desktop.ViewModels"
+             x:Class="MultiSych.Desktop.Views.SettingsView"
+             x:DataType="vm:SettingsViewModel">
+    <Grid RowDefinitions="Auto, *">
+        <StackPanel Grid.Row="0" Margin="15" Spacing="10">
+            <TextBlock Text="{DynamicResource SettingsTitle}" FontSize="24" FontWeight="Bold"/>
+            
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="Language / Dil:" VerticalAlignment="Center"/>
+                <ComboBox ItemsSource="{Binding AvailableLanguages}" SelectedItem="{Binding SelectedLanguage}" Width="150"/>
+            </StackPanel>
+            
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="Theme / Tema:" VerticalAlignment="Center"/>
+                <ComboBox ItemsSource="{Binding AvailableThemes}" SelectedItem="{Binding SelectedTheme}" Width="150"/>
+            </StackPanel>
+            
+            <CheckBox IsChecked="{Binding AutoSyncEnabled}" Content="{DynamicResource AutoSyncLabel}"/>
+            <CheckBox IsChecked="{Binding StartMinimized}" Content="Uygulamayı başlangıçta sistem tepsisine küçült"/>
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="{DynamicResource SyncIntervalLabel}" VerticalAlignment="Center"/>
+                <NumericUpDown Value="{Binding SyncIntervalMinutes}" Minimum="1" Maximum="1440" Width="120"/>
+            </StackPanel>
+
+            <TextBlock Text="{DynamicResource ApiKeysTitle}" FontSize="18" FontWeight="SemiBold" Margin="0,10,0,0"/>
+            <TextBox Text="{Binding CopilotApiKey}" Watermark="Copilot (OpenAI) API Key" PasswordChar="*"/>
+            <TextBox Text="{Binding GeminiApiKey}" Watermark="Gemini API Key" PasswordChar="*"/>
+            
+            <Button Content="{DynamicResource SaveSettingsBtn}" Command="{Binding SaveCommand}" Background="#0078D4" Foreground="White" Padding="15,8" Margin="0,10,0,0"/>
+        </StackPanel>
+
+        <Border Grid.Row="1" Margin="15" BorderBrush="#333333" BorderThickness="1" CornerRadius="5" Background="#1E1E1E">
+            <Grid RowDefinitions="Auto,*">
+                <TextBlock Grid.Row="0" Text="{DynamicResource LiveLogsTitle}" Foreground="LightGray" FontWeight="Bold" Margin="10"/>
+                <ScrollViewer Grid.Row="1" Margin="10">
+                    <TextBlock Text="{Binding LiveLogs}" Foreground="#4CAF50" FontFamily="Consolas" TextWrapping="Wrap"/>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

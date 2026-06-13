@@ -1,0 +1,61 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MultiSych.Desktop.ViewModels"
+             x:Class="MultiSych.Desktop.Views.DocumentAnalyzerView"
+             x:DataType="vm:DocumentAnalyzerViewModel">
+    <Grid RowDefinitions="Auto,*" Margin="20">
+        <TextBlock Grid.Row="0" Text="Belge ve E-Posta Analizi (AI)" FontSize="28" FontWeight="Bold" Margin="0,0,0,20"/>
+        
+        <TabControl Grid.Row="1">
+            <!-- Belge Özetleme Sekmesi -->
+            <TabItem Header="Belge Özetleme">
+                <Grid RowDefinitions="Auto, *, Auto, *" Margin="0,10,0,0">
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10" Margin="0,0,0,10">
+                        <Button Content="Dosya Yükle" Command="{Binding LoadFileCommand}" Classes="outline"/>
+                        <ComboBox ItemsSource="{Binding AvailableProviders}" SelectedItem="{Binding SelectedProvider}" Width="150"/>
+                        <Button Content="Özetle" Command="{Binding SummarizeCommand}" Classes="accent" IsEnabled="{Binding !IsAnalyzing}"/>
+                        <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center" Foreground="Gray"/>
+                        <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsAnalyzing}" Width="100" Height="4" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                    </StackPanel>
+                    
+                    <TextBox Grid.Row="1" Text="{Binding DocumentContent}" AcceptsReturn="True" TextWrapping="Wrap" Watermark="Belge içeriğini buraya yapıştırın veya 'Dosya Yükle' ile seçin..." ScrollViewer.VerticalScrollBarVisibility="Auto"/>
+                    
+                    <Grid Grid.Row="2" Margin="0,10,0,5">
+                        <TextBlock Text="Özet Sonucu:" FontWeight="Bold" VerticalAlignment="Center"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+                            <TextBox Text="{Binding ExportPassword}" Watermark="Şifre (İsteğe Bağlı)" Width="150" PasswordChar="*" VerticalAlignment="Center"/>
+                            <Button Content="📄 PDF İndir" Click="ExportToPdf_Click" Classes="outline" Padding="8,4" FontSize="12"/>
+                            <Button Content="📝 Word İndir" Click="ExportToWord_Click" Classes="outline" Padding="8,4" FontSize="12"/>
+                        </StackPanel>
+                    </Grid>
+                    
+                    <TextBox Grid.Row="3" Text="{Binding SummaryResult}" AcceptsReturn="True" TextWrapping="Wrap" IsReadOnly="True" ScrollViewer.VerticalScrollBarVisibility="Auto" Background="#1E1E1E"/>
+                </Grid>
+            </TabItem>
+            
+            <!-- E-Posta Analizi Sekmesi -->
+            <TabItem Header="E-Posta Analizi">
+                <Grid RowDefinitions="Auto, Auto, *, Auto, *" Margin="0,10,0,0">
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10" Margin="0,0,0,10">
+                        <ComboBox ItemsSource="{Binding AvailableProviders}" SelectedItem="{Binding SelectedProvider}" Width="150"/>
+                        <Button Content="E-Postayı Analiz Et" Command="{Binding AnalyzeEmailCommand}" Classes="accent" IsEnabled="{Binding !IsAnalyzing}"/>
+                        <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center" Foreground="Gray"/>
+                    </StackPanel>
+
+                    <Grid Grid.Row="1" ColumnDefinitions="Auto, *, Auto, *" Margin="0,0,0,10">
+                        <TextBlock Grid.Column="0" Text="Kimden:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <TextBox Grid.Column="1" Text="{Binding EmailFrom}" Watermark="Örn: boss@company.com" Margin="0,0,20,0"/>
+                        <TextBlock Grid.Column="2" Text="Konu:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <TextBox Grid.Column="3" Text="{Binding EmailSubject}" Watermark="Örn: Haftalık Toplantı"/>
+                    </Grid>
+                    
+                    <TextBox Grid.Row="2" Text="{Binding EmailBody}" AcceptsReturn="True" TextWrapping="Wrap" Watermark="E-Posta içeriğini buraya yapıştırın..." ScrollViewer.VerticalScrollBarVisibility="Auto"/>
+                    
+                    <TextBlock Grid.Row="3" Text="Analiz Sonucu (Görevler/Etkinlikler):" FontWeight="Bold" Margin="0,10,0,5"/>
+                    
+                    <TextBox Grid.Row="4" Text="{Binding EmailAnalysisResult}" AcceptsReturn="True" TextWrapping="Wrap" IsReadOnly="True" ScrollViewer.VerticalScrollBarVisibility="Auto" Background="#1E1E1E"/>
+                </Grid>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</UserControl>

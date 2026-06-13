@@ -1,0 +1,49 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MultiSych.Desktop.ViewModels"
+             x:Class="MultiSych.Desktop.Views.AIChatView"
+             x:DataType="vm:AIChatViewModel">
+
+    <Grid RowDefinitions="Auto, *, Auto">
+        
+        <!-- Üst Başlık (Header) ve Aksiyon Butonları -->
+        <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,20">
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="{Binding ProviderDisplayName}" FontSize="28" FontWeight="Bold"/>
+                <TextBlock Text="{Binding SettingsStatus}" FontSize="12" Opacity="0.7" Margin="0,5,0,0"/>
+            </StackPanel>
+            
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+                <Button Command="{Binding ToggleAutoTtsCommand}" Content="{Binding TtsButtonText}" ToolTip.Tip="Toggle Auto TTS (Sesli Okuma)" Background="Transparent" FontSize="20"/>
+                <Button Command="{Binding ClearChatCommand}" Content="🗑️ Temizle" Background="Transparent" FontSize="16"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Sohbet Geçmişi (Chat History) -->
+        <Border Grid.Row="1" Background="#05000000" CornerRadius="8" Margin="0,0,0,20">
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl ItemsSource="{Binding ChatMessages}" Margin="10">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ChatMessage">
+                            <Border Background="#11000000" CornerRadius="8" Padding="15" Margin="5">
+                                <StackPanel>
+                                    <!-- Mesajı Gönderen -->
+                                    <TextBlock Text="{Binding Sender}" FontWeight="Bold" Margin="0,0,0,5" Foreground="#0078D7"/>
+                                    <!-- Mesaj İçeriği -->
+                                    <TextBlock Text="{Binding Content}" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Mesaj Yazma Alanı (Input Area) -->
+        <Grid Grid.Row="2" ColumnDefinitions="*, Auto, Auto">
+            <TextBox Grid.Column="0" Text="{Binding CurrentMessage}" PlaceholderText="Mesajınızı buraya yazın..." AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="100" VerticalAlignment="Bottom"/>
+            <Button Grid.Column="1" Command="{Binding ToggleRecordingCommand}" Content="{Binding RecordButtonText}" ToolTip.Tip="Mikrofon (Whisper AI)" FontSize="20" Margin="10,0,0,0" VerticalAlignment="Bottom" Padding="15,10" Background="#11000000"/>
+            <Button Grid.Column="2" Command="{Binding SendMessageCommand}" Content="Gönder" Margin="10,0,0,0" VerticalAlignment="Bottom" Padding="20,10" Background="#0078D7" Foreground="White" FontWeight="Bold"/>
+        </Grid>
+    </Grid>
+</UserControl>

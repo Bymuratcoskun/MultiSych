@@ -1,0 +1,39 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MultiSych.Desktop.ViewModels"
+             xmlns:entities="using:MultiSych.Services.Data.Entities"
+             x:Class="MultiSych.Desktop.Views.FileExplorerView"
+             x:DataType="vm:FileExplorerViewModel">
+    <Grid RowDefinitions="Auto, Auto, *" Margin="20" DragDrop.AllowDrop="True">
+        <TextBlock Grid.Row="0" Text="Dosya Gezgini" FontSize="28" FontWeight="Bold" Margin="0,0,0,20"/>
+        
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="10" Margin="0,0,0,15">
+            <ComboBox ItemsSource="{Binding Accounts}" SelectedValue="{Binding SelectedAccountId}" SelectedValueBinding="{Binding AccountId}" DisplayMemberBinding="{Binding Email}" Width="250"/>
+            <Button Content="⬆️ Yukarı Çık" Command="{Binding NavigateUpCommand}"/>
+            <Button Content="🔄 Yenile" Command="{Binding RefreshCommand}"/>
+            <TextBox Text="{Binding SearchQuery}" Watermark="Sanal Sürücüde Ara..." Width="220" VerticalAlignment="Center" Margin="10,0,0,0"/>
+            <TextBlock Text="{Binding CurrentPath}" VerticalAlignment="Center" FontWeight="SemiBold" Margin="10,0,0,0"/>
+            <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" Width="100" Height="4" VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <!-- DoubleTapped eventi ile klasör içine geçiş -->
+        <DataGrid Grid.Row="2" ItemsSource="{Binding Files}" AutoGenerateColumns="False" IsReadOnly="True" GridLinesVisibility="Horizontal" DoubleTapped="OnRowDoubleTapped">
+            <DataGrid.Columns>
+                <DataGridTemplateColumn Header="Tür" Width="60">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="entities:CloudFileEntity">
+                            <Panel>
+                                <TextBlock Text="📁" IsVisible="{Binding IsDirectory}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <TextBlock Text="📄" IsVisible="{Binding !IsDirectory}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Panel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="Dosya Adı" Binding="{Binding FileName}" Width="*"/>
+                <DataGridTextColumn Header="Oluşturulma" Binding="{Binding CreatedAt}" Width="200"/>
+                <DataGridTextColumn Header="Değiştirilme" Binding="{Binding UpdatedAt}" Width="200"/>
+                <DataGridTextColumn Header="Boyut (Bayt)" Binding="{Binding FileSize}" Width="150"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </Grid>
+</UserControl>

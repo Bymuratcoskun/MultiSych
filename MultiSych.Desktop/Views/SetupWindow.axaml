@@ -1,0 +1,37 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:MultiSych.Desktop.ViewModels"
+        x:Class="MultiSych.Desktop.Views.SetupWindow"
+        x:DataType="vm:SetupViewModel"
+        Title="MultiSych - Kurulum Sihirbazı"
+        Width="450" Height="450"
+        WindowStartupLocation="CenterScreen"
+        CanResize="False"
+        Background="#1E1E1E">
+    <StackPanel Spacing="15" Margin="30" VerticalAlignment="Center">
+        <TextBlock Text="Kurulum Sihirbazı" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center"/>
+        <TextBlock Text="Uygulama ayarlarına ve ana şifrenize karar vererek kurulumu tamamlayın. Bu şifre, yerel veritabanınızı şifrelemek için kullanılacaktır." 
+                   TextWrapping="Wrap" TextAlignment="Center" Foreground="Gray" Margin="0,0,0,10"/>
+        
+        <Grid ColumnDefinitions="*, *" Margin="0,0,0,10">
+            <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                <TextBlock Text="Dil (Language):" FontWeight="SemiBold" Margin="0,0,0,5"/>
+                <ComboBox ItemsSource="{Binding AvailableLanguages}" SelectedItem="{Binding SelectedLanguage}" HorizontalAlignment="Stretch"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                <TextBlock Text="Tema (Theme):" FontWeight="SemiBold" Margin="0,0,0,5"/>
+                <ComboBox ItemsSource="{Binding AvailableThemes}" SelectedItem="{Binding SelectedTheme}" HorizontalAlignment="Stretch"/>
+            </StackPanel>
+        </Grid>
+
+        <TextBlock Text="Yeni Şifre:" FontWeight="SemiBold"/>
+        <TextBox Text="{Binding Password}" PasswordChar="*" Watermark="En az 8 karakter"/>
+        
+        <TextBlock Text="Şifreyi Onayla:" FontWeight="SemiBold"/>
+        <TextBox Text="{Binding ConfirmPassword}" PasswordChar="*"/>
+
+        <TextBlock Text="{Binding ErrorMessage}" Foreground="Red" IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" Margin="0,5"/>
+
+        <Button Content="Şifreyi Kaydet ve Devam Et" Command="{Binding SaveCommand}" Classes="accent" HorizontalAlignment="Stretch" Padding="10" Margin="0,10,0,0"/>
+    </StackPanel>
+</Window>

@@ -1,0 +1,18 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MultiSych.Desktop.ViewModels"
+             x:Class="MultiSych.Desktop.Views.ErrorReportView"
+             x:DataType="vm:ErrorReportViewModel">
+    <StackPanel Margin="20" Spacing="15" MaxWidth="800" HorizontalAlignment="Left">
+        <TextBlock Text="Hata Bildirimi / GitHub Issue Aç" FontSize="28" FontWeight="Bold"/>
+        <TextBlock Text="Karşılaştığınız bir hatayı veya yeni bir özellik talebini doğrudan GitHub üzerinde bir 'Issue' olarak açabilirsiniz. Gönder butonuna tıkladığınızda tarayıcınız açılacaktır." Foreground="Gray" TextWrapping="Wrap" Margin="0,0,0,10"/>
+        
+        <TextBlock Text="Hata Başlığı:" FontWeight="SemiBold"/>
+        <TextBox Text="{Binding IssueTitle}" Watermark="Kısa ve açıklayıcı bir başlık girin..."/>
+        
+        <TextBlock Text="Detaylı Açıklama:" FontWeight="SemiBold"/>
+        <TextBox Text="{Binding IssueDescription}" AcceptsReturn="True" Height="200" Watermark="Hatayı nasıl tetiklediğinizi ve beklenen sonucun ne olduğunu detaylıca açıklayın..." TextWrapping="Wrap"/>
+        
+        <Button Content="GitHub'da Issue Aç" Command="{Binding SubmitGitHubIssueCommand}" Classes="accent" HorizontalAlignment="Right" Padding="15,10"/>
+    </StackPanel>
+</UserControl>

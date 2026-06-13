@@ -1,0 +1,19 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:MultiSych.Desktop.ViewModels"
+        x:Class="MultiSych.Desktop.Views.AddAccountWindow"
+        x:DataType="vm:AddAccountViewModel"
+        Title="Yeni Hesap Ekle"
+        Width="400" Height="300"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        Background="#1E1E1E">
+    <StackPanel Spacing="15" Margin="30" VerticalAlignment="Center">
+        <TextBlock Text="Bulut Hesabı Ekle" FontSize="20" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,0,0,10"/>
+        <TextBlock Text="Bağlamak istediğiniz sağlayıcıyı seçin. Tarayıcınız açılacak ve güvenli giriş yapmanız istenecektir." TextWrapping="Wrap" TextAlignment="Center" Foreground="Gray" Margin="0,0,0,20"/>
+        
+        <Button Content="Google ile Giriş Yap" Command="{Binding AddGoogleCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#DB4437" Foreground="White" Padding="10"/>
+        <Button Content="Microsoft ile Giriş Yap" Command="{Binding AddMicrosoftCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#0078D7" Foreground="White" Padding="10"/>
+        <Button Content="Yandex ile Giriş Yap" Command="{Binding AddYandexCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#FFCC00" Foreground="Black" Padding="10"/>
+    </StackPanel>
+</Window>

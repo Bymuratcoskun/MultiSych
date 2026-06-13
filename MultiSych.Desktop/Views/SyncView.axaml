@@ -1,0 +1,39 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:MultiSych.Desktop.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             x:Class="MultiSych.Desktop.Views.SyncView"
+             x:DataType="vm:SyncViewModel">
+    <StackPanel Spacing="10" Margin="20">
+        <TextBlock Text="Manuel Senkronizasyon" FontSize="24" FontWeight="Bold" />
+        <TextBlock Text="Arka plan senkronizasyonunu beklemeden işlemleri manuel olarak tetikleyin." TextWrapping="Wrap" Foreground="Gray"/>
+
+        <Grid ColumnDefinitions="*, *" Margin="0,15,0,0">
+            <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                <TextBlock Text="Hesap Filtresi:" FontWeight="SemiBold" Margin="0,0,0,5" Foreground="#CCCCCC"/>
+                <ComboBox ItemsSource="{Binding Accounts}" SelectedValue="{Binding SelectedAccountId}" SelectedValueBinding="{Binding AccountId}" DisplayMemberBinding="{Binding Email}" HorizontalAlignment="Stretch"/>
+            </StackPanel>
+            
+            <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                <TextBlock Text="Hizmet Filtresi:" FontWeight="SemiBold" Margin="0,0,0,5" Foreground="#CCCCCC"/>
+                <ComboBox ItemsSource="{Binding SyncTypes}" SelectedItem="{Binding SelectedSyncType}" HorizontalAlignment="Stretch"/>
+            </StackPanel>
+        </Grid>
+
+        <Button Content="Seçili Filtrelerle Senkronize Et" 
+                Command="{Binding TriggerSyncCommand}" 
+                Classes="accent" 
+                IsEnabled="{Binding !IsBusy}"
+                Margin="0,20,0,0" />
+
+        <Button Content="E-postaları Etkinlikler için Analiz Et"
+                Command="{Binding AnalyzeEmailsCommand}"
+                IsEnabled="{Binding !IsBusy}"
+                Margin="0,10,0,0" />
+        
+        <TextBlock IsVisible="{Binding IsBusy}" Text="İşlem yürütülüyor, lütfen bekleyin..." Margin="0,10,0,0" Foreground="Orange"/>
+
+    </StackPanel>
+</UserControl>

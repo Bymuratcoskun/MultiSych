@@ -1,0 +1,41 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:MultiSych.Desktop.ViewModels"
+        x:DataType="vm:MainWindowViewModel"
+        x:Class="MultiSych.Desktop.MainWindow"
+        x:Name="RootWindow"
+        Title="MultiSych" Width="1000" Height="650"
+        Background="{DynamicResource PrimaryBackgroundBrush}">
+  
+  <Grid ColumnDefinitions="250,*">
+    <!-- Sidebar -->
+    <Border Grid.Column="0" Background="{DynamicResource SidebarBackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
+      <StackPanel>
+        <TextBlock Text="MultiSych" FontSize="24" FontWeight="Bold" Margin="20" Foreground="{DynamicResource AccentBrush}"/>
+        
+        <ItemsControl ItemsSource="{Binding NavigationItems}" Margin="10">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Button Command="{Binding #RootWindow.((vm:MainWindowViewModel)DataContext).NavigateCommand}" 
+                      CommandParameter="{Binding Section}"
+                      Background="Transparent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="15,10" Margin="0,2">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <TextBlock Text="{Binding IconGlyph}" FontSize="18" Foreground="{DynamicResource TextBrush}"/>
+                  <TextBlock Text="{Binding Label}" VerticalAlignment="Center" Foreground="{DynamicResource TextBrush}"/>
+                </StackPanel>
+              </Button>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </Border>
+    
+    <!-- Main Content & Status Bar -->
+    <Grid Grid.Column="1" RowDefinitions="*,Auto">
+      <TransitioningContentControl Content="{Binding CurrentPageViewModel}" Grid.Row="0" Margin="20"/>
+      <Border Grid.Row="1" Background="{DynamicResource SecondaryBackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="15,5">
+        <TextBlock Text="{Binding StatusMessage}" FontSize="12" Foreground="{DynamicResource TextBrush}" Opacity="0.7"/>
+      </Border>
+    </Grid>
+  </Grid>
+</Window>

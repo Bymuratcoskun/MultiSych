@@ -1,0 +1,35 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="MultiSych.Desktop.Views.ToastNotificationWindow"
+        Title="Notification"
+        Width="340" Height="90"
+        WindowStartupLocation="Manual"
+        SystemDecorations="None"
+        Topmost="True"
+        ShowInTaskbar="False"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        Opacity="0">
+
+    <Window.Transitions>
+        <Transitions>
+            <DoubleTransition Property="Opacity" Duration="0:0:0.5"/>
+        </Transitions>
+    </Window.Transitions>
+    
+    <!-- Şık Gölgeli ve Yuvarlatılmış Arka Plan -->
+    <Border Background="#2D2D30" 
+            CornerRadius="8" 
+            Margin="10"
+            BoxShadow="0 4 15 0 #40000000">
+        <Grid ColumnDefinitions="Auto,*,Auto" Margin="15,10">
+            <TextBlock x:Name="IconText" Grid.Column="0" Text="🔔" FontSize="26" VerticalAlignment="Center" Margin="0,0,15,0"/>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <TextBlock x:Name="TitleText" FontWeight="Bold" FontSize="14" Foreground="White" Text="Title" TextTrimming="CharacterEllipsis" />
+                <TextBlock x:Name="MessageText" FontSize="12" Foreground="#CCCCCC" Text="Message" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+            </StackPanel>
+            <Button Grid.Column="2" Content="✕" Background="Transparent" Foreground="Gray" BorderThickness="0"
+                    VerticalAlignment="Top" HorizontalAlignment="Right" Padding="5" Click="CloseButton_Click" Cursor="Hand"/>
+        </Grid>
+    </Border>
+</Window>

@@ -1,0 +1,93 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:MultiSych.Desktop.ViewModels"
+        x:Class="MultiSych.Desktop.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="MultiSych - Cloud AI Platform"
+        Width="1200" Height="750"
+        WindowStartupLocation="CenterScreen"
+        Closing="Window_Closing">
+
+    <TrayIcon.Icons>
+        <TrayIcons>
+            <TrayIcon ToolTipText="MultiSych" Click="TrayIcon_Show_Click">
+                <TrayIcon.Menu>
+                    <NativeMenu>
+                        <NativeMenuItem Header="Arayüzü Göster" Click="TrayIcon_Show_Click" />
+                        <NativeMenuItemSeparator />
+                        <NativeMenuItem Header="Tamamen Çıkış Yap" Click="TrayIcon_Exit_Click" />
+                    </NativeMenu>
+                </TrayIcon.Menu>
+            </TrayIcon>
+        </TrayIcons>
+    </TrayIcon.Icons>
+
+    <Grid ColumnDefinitions="260, *">
+        
+        <!-- Sol Menü (Sidebar) -->
+        <Border Grid.Column="0" Background="#1C1C1E" BorderBrush="#33000000" BorderThickness="0,0,1,0">
+            <Grid RowDefinitions="Auto, *, Auto, Auto">
+                <!-- Logo / Başlık -->
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="20,30,20,30" Spacing="12">
+                    <TextBlock Text="☁️" FontSize="32" VerticalAlignment="Center"/>
+                    <TextBlock Text="MultiSych" FontSize="24" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- Navigasyon Listesi -->
+                <ItemsControl Grid.Row="1" ItemsSource="{Binding NavigationItems}" Margin="10,0">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:NavigationItem">
+                            <Button Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).NavigateCommand}"
+                                    CommandParameter="{Binding Section}"
+                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                    Background="Transparent" BorderThickness="0"
+                                    Padding="15,12" CornerRadius="8" Margin="0,2">
+                                <StackPanel Orientation="Horizontal" Spacing="15">
+                                    <TextBlock Text="{Binding IconGlyph}" FontSize="20" Foreground="White" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Label}" FontSize="16" Foreground="White" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- AI Chat Kısayolları -->
+                <StackPanel Grid.Row="2" Margin="20,20,20,30" Spacing="10">
+                    <TextBlock Text="AI Assistants" FontSize="12" Foreground="#888888" FontWeight="Bold" Margin="0,0,0,5"/>
+                    <Button Command="{Binding OpenCopilotChatCommand}" Content="🤖 Microsoft Copilot" HorizontalAlignment="Stretch" Background="#2C2C2E" Foreground="White" CornerRadius="8" Padding="15,10"/>
+                    <Button Command="{Binding OpenGeminiChatCommand}" Content="✨ Google Gemini" HorizontalAlignment="Stretch" Background="#2C2C2E" Foreground="White" CornerRadius="8" Padding="15,10"/>
+                    <Button Command="{Binding OpenYandexChatCommand}" Content="🧠 Yandex AI" HorizontalAlignment="Stretch" Background="#2C2C2E" Foreground="White" CornerRadius="8" Padding="15,10"/>
+                </StackPanel>
+
+                <!-- Sistem Durumu (RAM & Sürüm) -->
+                <Border Grid.Row="3" Background="#151515" Padding="20,15" BorderBrush="#33000000" BorderThickness="0,1,0,0">
+                    <StackPanel Spacing="5">
+                        <TextBlock Text="MultiSych v1.0.0-beta" FontSize="11" Foreground="#666666" FontWeight="SemiBold"/>
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <TextBlock Text="RAM Kullanımı:" FontSize="11" Foreground="#666666"/>
+                            <TextBlock Name="RamUsageText" Text="Hesaplanıyor..." FontSize="11" Foreground="#4CAF50" FontWeight="Bold"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- Ana İçerik Alanı (Content Area) -->
+        <Grid Grid.Column="1" RowDefinitions="*, Auto">
+            <!-- Seçili Sayfanın Yükleneceği Kısım -->
+            <TransitioningContentControl Grid.Row="0" Content="{Binding CurrentPageViewModel}">
+                <TransitioningContentControl.PageTransition>
+                    <CrossFade Duration="0:0:0.25" />
+                </TransitioningContentControl.PageTransition>
+            </TransitioningContentControl>
+            
+            <!-- Tema Değiştirme Butonu (Sağ Üst) -->
+            <Button Grid.Row="0" Content="🌓" Click="ToggleTheme_Click" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="20" Padding="10" CornerRadius="20" Background="#2D2D30" Foreground="White" ToolTip.Tip="Aydınlık / Karanlık Tema" ZIndex="100"/>
+            
+            <!-- Alt Durum Çubuğu -->
+            <Border Grid.Row="1" Background="{DynamicResource SystemRegionBrush}" Padding="15,5" BorderBrush="#20000000" BorderThickness="0,1,0,0">
+                <TextBlock Text="{Binding StatusMessage}" Foreground="Gray" FontSize="12"/>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

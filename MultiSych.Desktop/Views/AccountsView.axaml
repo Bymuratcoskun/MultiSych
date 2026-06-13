@@ -1,0 +1,35 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MultiSych.Desktop.ViewModels"
+             x:Class="MultiSych.Desktop.Views.AccountsView"
+             x:DataType="vm:AccountsViewModel">
+    <Grid Margin="20" RowDefinitions="Auto, *">
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10" Margin="0,0,0,20">
+            <TextBlock Text="Bağlı Hesaplar" FontSize="24" FontWeight="Bold" VerticalAlignment="Center"/>
+            <Button Content="+ Yeni Hesap Ekle" Command="{Binding AddAccountCommand}" Classes="accent"/>
+        </StackPanel>
+
+        <DataGrid Grid.Row="1" ItemsSource="{Binding Accounts}" AutoGenerateColumns="False" CanUserReorderColumns="True" CanUserResizeColumns="True" IsReadOnly="True">
+            <DataGrid.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Sanal Sürücüye Bağla" Command="{Binding $parent[DataGrid].((vm:AccountsViewModel)DataContext).MountCommand}" CommandParameter="{Binding}"/>
+                    <MenuItem Header="Bağlantıyı Kes" Command="{Binding $parent[DataGrid].((vm:AccountsViewModel)DataContext).UnmountCommand}" CommandParameter="{Binding}"/>
+                    <Separator/>
+                    <MenuItem Header="Hesabı Sil" Command="{Binding $parent[DataGrid].((vm:AccountsViewModel)DataContext).DeleteAccountCommand}" CommandParameter="{Binding}"/>
+                </ContextMenu>
+            </DataGrid.ContextMenu>
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Sağlayıcı" Binding="{Binding Provider}" Width="150"/>
+                <DataGridTextColumn Header="E-Posta Adresi" Binding="{Binding Email}" Width="*"/>
+                <DataGridTextColumn Header="Durum" Binding="{Binding Status}" Width="200"/>
+                <DataGridTemplateColumn Header="İşlemler">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Button Content="Senkronize Et" Command="{Binding $parent[DataGrid].((vm:AccountsViewModel)DataContext).SyncAccountCommand}" CommandParameter="{Binding}" Classes="outline"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+    </Grid>
+</UserControl>

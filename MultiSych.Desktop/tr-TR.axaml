@@ -1,0 +1,17 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:system="clr-namespace:System;assembly=mscorlib">
+    <system:String x:Key="SettingsTitle">Ayarlar</system:String>
+    <system:String x:Key="AutoSyncLabel">Otomatik Senkronizasyon (AutoSync) Aktif Mi?</system:String>
+    <system:String x:Key="SyncIntervalLabel">Senkronizasyon Aralığı (Dakika):</system:String>
+    <system:String x:Key="ApiKeysTitle">Yapay Zeka API Anahtarları</system:String>
+    <system:String x:Key="SaveSettingsBtn">💾 Ayarları Kaydet</system:String>
+    <system:String x:Key="LiveLogsTitle">Canlı Sistem Logları (Debug)</system:String>
+
+    <system:String x:Key="DashboardTitle">Genel Bakış</system:String>
+    <system:String x:Key="RefreshBtn">🔄 Yenile</system:String>
+    <system:String x:Key="TotalAccountsLabel">Toplam Hesap</system:String>
+    <system:String x:Key="TotalEmailsLabel">Senkronize E-Posta</system:String>
+    <system:String x:Key="TotalEventsLabel">Takvim Etkinliği</system:String>
+    <system:String x:Key="TotalFilesLabel">Bulut Dosyası</system:String>
+</ResourceDictionary>

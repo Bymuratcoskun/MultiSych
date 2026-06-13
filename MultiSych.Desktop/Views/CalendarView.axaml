@@ -1,0 +1,27 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MultiSych.Desktop.ViewModels"
+             x:Class="MultiSych.Desktop.Views.CalendarView"
+             x:DataType="vm:CalendarViewModel">
+    <Grid RowDefinitions="Auto, Auto, *" Margin="20">
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10" Margin="0,0,0,20">
+            <TextBlock Text="Takvim Etkinlikleri" FontSize="28" FontWeight="Bold" VerticalAlignment="Center"/>
+            <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" Width="100" Height="4" VerticalAlignment="Center"/>
+        </StackPanel>
+        
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="20" Margin="0,0,0,20" VerticalAlignment="Top">
+            <Calendar SelectedDate="{Binding SelectedDate}" SelectionMode="SingleDate" Background="#2D2D30" CornerRadius="8"/>
+            <Button Content="Filtreyi Temizle" Command="{Binding ClearFilterCommand}" IsVisible="{Binding SelectedDate, Converter={x:Static ObjectConverters.IsNotNull}}" VerticalAlignment="Top" Classes="outline"/>
+        </StackPanel>
+
+        <DataGrid Grid.Row="2" ItemsSource="{Binding Events}" AutoGenerateColumns="False" IsReadOnly="True" GridLinesVisibility="Horizontal">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Başlık" Binding="{Binding Title}" Width="*"/>
+                <DataGridTextColumn Header="Başlangıç" Binding="{Binding StartTime, StringFormat='{}{0:dd MMM yyyy HH:mm}'}" Width="150"/>
+                <DataGridTextColumn Header="Bitiş" Binding="{Binding EndTime, StringFormat='{}{0:dd MMM yyyy HH:mm}'}" Width="150"/>
+                <DataGridTextColumn Header="Konum" Binding="{Binding Location}" Width="200"/>
+                <DataGridCheckBoxColumn Header="Tüm Gün" Binding="{Binding IsAllDay}" Width="80"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </Grid>
+</UserControl>

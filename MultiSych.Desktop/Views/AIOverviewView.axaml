@@ -1,0 +1,38 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MultiSych.Desktop.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="MultiSych.Desktop.Views.AIOverviewView"
+             x:DataType="vm:AIOverviewViewModel">
+
+    <Grid RowDefinitions="Auto, *, Auto" Margin="30">
+        <TextBlock Grid.Row="0" Text="AI Assistants Overview" FontSize="28" FontWeight="Bold" Foreground="{DynamicResource SystemAccentColor}" Margin="0,0,0,20"/>
+        
+        <!-- Yapay Zeka Asistanları (Büyük Kartlar) -->
+        <ItemsControl Grid.Row="1" ItemsSource="{Binding ProviderButtons}">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <WrapPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Button Command="{Binding $parent[UserControl].((vm:AIOverviewViewModel)DataContext).OpenChatCommand}" 
+                            CommandParameter="{Binding}" 
+                            Width="200" Height="200" Margin="15" 
+                            CornerRadius="15" Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}">
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="15">
+                            <TextBlock Text="🤖" FontSize="50" HorizontalAlignment="Center"/>
+                            <TextBlock Text="{Binding}" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Launch Chat" Opacity="0.6" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <TextBlock Grid.Row="2" Text="{Binding StatusMessage}" FontStyle="Italic" Opacity="0.7" HorizontalAlignment="Center"/>
+    </Grid>
+</UserControl>

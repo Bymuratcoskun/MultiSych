@@ -1,0 +1,80 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:MultiSych.Desktop.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+        x:Class="MultiSych.Desktop.Views.AIChatWindow"
+        x:DataType="vm:AIChatViewModel"
+        Title="{Binding ProviderDisplayName}"
+        WindowStartupLocation="CenterOwner"
+        Width="800" Height="650">
+
+    <Grid RowDefinitions="Auto, *, Auto, Auto" Margin="20">
+        
+        <!-- Üst Başlık ve Ayarlar -->
+        <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,15">
+            <StackPanel Orientation="Horizontal" Spacing="15">
+                <TextBlock Text="{Binding ProviderDisplayName}" FontSize="24" FontWeight="Bold" VerticalAlignment="Center"/>
+                <ComboBox ItemsSource="{Binding AvailableModels}" SelectedItem="{Binding SelectedModel}" VerticalAlignment="Center" Width="150" CornerRadius="6"/>
+            </StackPanel>
+            <Button Grid.Column="1" Command="{Binding ToggleAutoTtsCommand}" Content="{Binding TtsButtonText}" FontSize="20" Background="Transparent" ToolTip.Tip="Toggle Text-to-Speech (Sesli Okuma)"/>
+        </Grid>
+
+        <!-- Mesaj Geçmişi (Sohbet Baloncukları) -->
+        <ScrollViewer Grid.Row="1" Margin="0,0,0,15" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <ItemsControl ItemsSource="{Binding ChatMessages}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ChatMessage">
+                        <!-- Chat Baloncuğu Tasarımı -->
+                        <Border CornerRadius="12" Margin="5" Padding="15,10" 
+                                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" 
+                                HorizontalAlignment="Stretch">
+                            <StackPanel>
+                                <TextBlock Text="{Binding SenderName}" FontSize="12" FontWeight="Bold" Opacity="0.6" Margin="0,0,0,5"/>
+                                <TextBlock Text="{Binding Message}" TextWrapping="Wrap" FontSize="14" LineHeight="22"/>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <!-- Durum Bildirimi (Örn: Model indiriliyor...) -->
+        <TextBlock Grid.Row="2" Text="{Binding SettingsStatus}" FontSize="12" Opacity="0.7" Margin="0,0,0,10" FontStyle="Italic" Foreground="{DynamicResource SystemAccentColor}"/>
+
+        <!-- Metin Kutusu ve Butonlar -->
+        <Grid Grid.Row="3" ColumnDefinitions="*, Auto, Auto">
+            <TextBox Grid.Column="0" 
+                     Text="{Binding CurrentMessage}" 
+                     PlaceholderText="Mesajınızı yazın veya konuşmak için mikrofona tıklayın..." 
+                     AcceptsReturn="True" 
+                     MaxHeight="120" 
+                     CornerRadius="8" 
+                     Padding="12,10"
+                     FontSize="14"/>
+            
+            <!-- Mikrofon Butonu (Whisper AI için) -->
+            <Button Grid.Column="1" 
+                    Command="{Binding ToggleRecordingCommand}" 
+                    Content="{Binding RecordButtonText}" 
+                    FontSize="20" 
+                    Margin="10,0,0,0" 
+                    VerticalAlignment="Bottom" 
+                    CornerRadius="8"
+                    Background="Transparent"/>
+            
+            <!-- Gönder Butonu -->
+            <Button Grid.Column="2" 
+                    Command="{Binding SendMessageCommand}" 
+                    Content="Gönder" 
+                    IsDefault="True"
+                    Margin="10,0,0,0" 
+                    VerticalAlignment="Bottom"
+                    Background="{DynamicResource SystemAccentColor}"
+                    Foreground="White"
+                    CornerRadius="8"
+                    Padding="25,12"/>
+        </Grid>
+    </Grid>
+</Window>
