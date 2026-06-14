@@ -10,5 +10,7 @@ public class CalendarEventEntity : BaseEntity
     public string Description { get; set; } = string.Empty;
     public DateTime StartTime { get; set; }
     public DateTime EndTime { get; set; }
+    public string? Location { get; set; }
+    public bool IsAllDay { get; set; }
     public string Provider { get; set; } = string.Empty;
 }

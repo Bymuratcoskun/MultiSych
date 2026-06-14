@@ -201,4 +201,5 @@ public class StorageService : IStorageService
     public Task<bool> DeleteFileAsync(AccountCredentials credentials, string fileId) => throw new NotImplementedException();
     public Task<Stream> DownloadFileAsync(AccountCredentials credentials, string fileId) => throw new NotImplementedException();
     public Task<List<CloudFile>> SearchFilesAsync(AccountCredentials credentials, string query) => throw new NotImplementedException();
+    public Task<bool> MoveFileAsync(AccountCredentials credentials, string fileId, string newParentId, string? newName = null) => throw new NotImplementedException();
 }

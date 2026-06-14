@@ -36,12 +36,13 @@ public static class ServiceCollectionExtensions
         services.AddHostedService<AutoSyncBackgroundService>();
 
         // Veri kalıcılığı ve Bulut Depolama servisleri
-        services.AddScoped<IAuthenticationService, GoogleAuthenticationService>();
+        services.AddScoped<IAuthenticationService, AuthenticationService>();
         services.AddScoped<IAccountStore, AccountStoreService>();
-        services.AddScoped<IStorageService, StorageService>();
         services.AddScoped<IEmailService, CloudEmailService>();
-        services.AddScoped<ICalendarService, CalendarService>();
+        services.AddScoped<ICalendarService, CloudCalendarService>();
+        services.AddScoped<IStorageService, CloudStorageService>();
         services.AddScoped<IHybridAIService, HybridAIService>(); // Bu satır zaten vardı, şimdi implementasyonu ekledik.
+        services.AddScoped<IIntentParserService, IntentParserService>();
 
         return services;
     }

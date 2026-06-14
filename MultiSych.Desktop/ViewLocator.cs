@@ -13,7 +13,9 @@ public class ViewLocator : IDataTemplate
             return null;
 
         var name = data.GetType().FullName!.Replace("ViewModel", "View", StringComparison.Ordinal);
+#pragma warning disable IL2057
         var type = Type.GetType(name);
+#pragma warning restore IL2057
 
         if (type != null)
         {
@@ -23,8 +25,5 @@ public class ViewLocator : IDataTemplate
         return new TextBlock { Text = "Not Found: " + name };
     }
 
-    public bool Match(object? data)
-    {
-        return data is ViewModelBase;
-    }
+    public bool Match(object? data) => data is ViewModelBase;
 }

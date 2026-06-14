@@ -2,7 +2,9 @@ using System;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,6 +25,8 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _userSettingsService = Program.ServiceProvider.GetRequiredService<IUserSettingsService>();
+
+        InitializeTrayIcon();
 
         // Her 2 saniyede bir RAM kullanımını ekranda güncelleyen sayaç
         _ramTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
@@ -47,6 +51,36 @@ public partial class MainWindow : Window
         }
     }
 
+    private void InitializeTrayIcon()
+    {
+        var trayIcon = new TrayIcon { ToolTipText = "MultiSych" };
+        trayIcon.Clicked += TrayIcon_Show_Click;
+
+        var showMenu = new NativeMenuItem("Arayüzü Göster");
+        showMenu.Click += TrayIcon_Show_Click;
+
+        var syncMenu = new NativeMenuItem("Senkronize Et");
+        syncMenu.Click += TrayIcon_Sync_Click;
+
+        var settingsMenu = new NativeMenuItem("Ayarlar");
+        settingsMenu.Click += TrayIcon_Settings_Click;
+
+        var exitMenu = new NativeMenuItem("Tamamen Çıkış Yap");
+        exitMenu.Click += TrayIcon_Exit_Click;
+
+        var nativeMenu = new NativeMenu();
+        nativeMenu.Add(showMenu);
+        nativeMenu.Add(syncMenu);
+        nativeMenu.Add(settingsMenu);
+        nativeMenu.Add(new NativeMenuItemSeparator());
+        nativeMenu.Add(exitMenu);
+
+        trayIcon.Menu = nativeMenu;
+
+        var trayIcons = new TrayIcons { trayIcon };
+        TrayIcon.SetIcons(Application.Current!, trayIcons);
+    }
+
     private void UpdateRamUsage()
     {
         var ramMB = Environment.WorkingSet / (1024 * 1024);
@@ -64,18 +98,18 @@ public partial class MainWindow : Window
                 var scopeFactory = Program.ServiceProvider.GetRequiredService<IServiceScopeFactory>();
                 using var scope = scopeFactory.CreateScope();
                 var dbContext = scope.ServiceProvider.GetRequiredService<LocalCacheDbContext>();
-                
+
                 var now = DateTime.UtcNow;
                 var upcomingLimit = now.AddHours(24); // Önümüzdeki 24 saat
-                
+
                 // Yaklaşan etkinlikleri ve yeni/işlenmemiş e-postaları say
                 var eventCount = await dbContext.CachedEvents.CountAsync(ev => ev.StartTime > now && ev.StartTime <= upcomingLimit);
                 var newEmails = await dbContext.CachedEmails.CountAsync(em => !em.IsRead);
 
                 // UI işlemini Dispatcher ile ana thread'e geri yolluyoruz
-                Dispatcher.UIThread.Post(() => 
+                Dispatcher.UIThread.Post(() =>
                 {
-                    var trayIcon = TrayIcon.GetIcons(this)?.FirstOrDefault();
+                    var trayIcon = TrayIcon.GetIcons(Application.Current!)?.FirstOrDefault();
                     if (trayIcon != null)
                     {
                         if (eventCount > 0 || newEmails > 0)
@@ -92,12 +126,12 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+    private async void Window_Closing(object? sender, WindowClosingEventArgs e)
     {
         if (!_reallyExit)
         {
             e.Cancel = true; // Kapanmayı durdur
-            
+
             if (!this.IsVisible) return; // Pencere zaten gizliyse dialog çıkarma
 
             if (_skipExitConfirmation)
@@ -108,7 +142,7 @@ public partial class MainWindow : Window
 
             var dialog = new ConfirmationDialog();
             var result = await dialog.ShowAsync(this, "MultiSych arka planda çalışmaya ve senkronizasyon yapmaya devam edecektir.\n\nPencereyi gizlemek istediğinize emin misiniz?");
-            
+
             if (result)
             {
                 if (dialog.DontShowAgain)
@@ -166,4 +200,4 @@ public partial class MainWindow : Window
         _reallyExit = true;
         this.Close();
     }
-}
+

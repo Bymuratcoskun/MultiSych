@@ -36,7 +36,8 @@ public class DashboardViewModel : ViewModelBase, IDisposable
     private PlotModel _trendModel = null!;
     private string _dailyAiSummary = "Yapay zeka günün özetini hazırlıyor...";
 
-    public ObservableCollection<string> RecentLogs { get; } = new();
+    public ObservableCollection<string> RecentLogs { get; } = [];
+    public ObservableCollection<AccountStatusItem> AccountStatuses { get; } = [];
 
     public DashboardViewModel(IAppStatusService appStatusService, IServiceScopeFactory scopeFactory)
     {
@@ -145,8 +146,8 @@ public class DashboardViewModel : ViewModelBase, IDisposable
             {
                 AccountStatuses.Add(new AccountStatusItem
                 {
-                    Provider = acc.Provider,
-                    Email = acc.Email,
+                    Provider = acc.Provider ?? string.Empty,
+                    Email = acc.Email ?? string.Empty,
                     Status = acc.ExpiresAt > DateTime.UtcNow ? "🟢 Bağlı" : "🔴 Süresi Doldu"
                 });
             }

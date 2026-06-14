@@ -37,8 +37,8 @@ public class SettingsViewModel : ViewModelBase
         _configurationService = configurationService;
         _userSettingsService = userSettingsService;
         _scopeFactory = scopeFactory;
-        AvailableLanguages = new ObservableCollection<string> { "English", "Türkçe" };
-        AvailableThemes = new ObservableCollection<string> { "Modern", "Retro", "Sade" };
+        AvailableLanguages = ["English", "Türkçe"];
+        AvailableThemes = ["Modern", "Retro", "Sade"];
         SaveCommand = new RelayCommand(async _ => await SaveSettingsAsync());
         
         ToggleLogPauseCommand = new RelayCommand(_ => IsLogPaused = !IsLogPaused);
@@ -123,6 +123,19 @@ public class SettingsViewModel : ViewModelBase
         }
     }
 
+    public string YandexApiKey
+    {
+        get => _config.AI?.YandexAiApiKey ?? string.Empty;
+        set
+        {
+            if (_config.AI != null)
+            {
+                _config.AI.YandexAiApiKey = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
     public string SelectedLanguage
     {
         get => _selectedLanguage;
@@ -181,6 +194,7 @@ public class SettingsViewModel : ViewModelBase
                 { "MULTISYCH_AUTO_SYNC", AutoSyncEnabled.ToString() },
                 { "COPILOT_API_KEY", CopilotApiKey },
                 { "GEMINI_API_KEY", GeminiApiKey },
+            { "YANDEX_API_KEY", YandexApiKey },
             };
 
             // Çevresel ve API ayarlarını .env'ye kaydet

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using MultiSych.Desktop.Services;
@@ -12,7 +13,7 @@ namespace MultiSych.Desktop.Views;
 public partial class ToastNotificationWindow : Window
 {
     private DispatcherTimer? _timer;
-    private static readonly List<ToastNotificationWindow> ActiveToasts = new();
+    private static readonly List<ToastNotificationWindow> ActiveToasts = [];
 
     public ToastNotificationWindow()
     {
@@ -58,16 +59,19 @@ public partial class ToastNotificationWindow : Window
     private static void RearrangeToasts()
     {
         // Aktif olan tüm bildirimleri sırayla yukarıya doğru yığ (Stacking)
-        if (Screens.Primary == null) return;
         
-        var workingArea = Screens.Primary.WorkingArea;
-        
-        for (int i = 0; i < ActiveToasts.Count; i++)
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop && desktop.MainWindow != null)
         {
-            var toast = ActiveToasts[i];
-            var x = workingArea.Right - toast.Width - 10;
-            var y = workingArea.Bottom - ((toast.Height + 10) * (i + 1));
-            toast.Position = new PixelPoint((int)x, (int)y);
+            var screens = desktop.MainWindow.Screens;
+            var workingArea = screens.Primary?.WorkingArea ?? new PixelRect(0, 0, 1920, 1080);
+        
+            for (int i = 0; i < ActiveToasts.Count; i++)
+            {
+                var toast = ActiveToasts[i];
+                var x = workingArea.Right - toast.Width - 10;
+                var y = workingArea.Bottom - ((toast.Height + 10) * (i + 1));
+                toast.Position = new PixelPoint((int)x, (int)y);
+            }
         }
     }
 

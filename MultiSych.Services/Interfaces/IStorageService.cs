@@ -1,4 +1,7 @@
 using MultiSych.Services.Models;
+using System.Collections.Generic;
+using System.IO;
+using System.Threading.Tasks;
 
 namespace MultiSych.Services.Interfaces
 {
@@ -11,5 +14,6 @@ namespace MultiSych.Services.Interfaces
         Task<Stream> DownloadFileAsync(AccountCredentials credentials, string fileId);
         Task SyncStorageAsync(AccountCredentials credentials);
         Task<List<CloudFile>> SearchFilesAsync(AccountCredentials credentials, string query);
+        Task<bool> MoveFileAsync(AccountCredentials credentials, string fileId, string newParentId, string? newName = null);
     }
 }

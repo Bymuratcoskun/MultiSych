@@ -21,8 +21,8 @@ public class SetupViewModel : ViewModelBase
     public SetupViewModel(Action<bool> closeAction)
     {
         _closeAction = closeAction;
-        AvailableLanguages = new ObservableCollection<string> { "English", "Türkçe" };
-        AvailableThemes = new ObservableCollection<string> { "Modern", "Retro", "Sade" };
+        AvailableLanguages = ["English", "Türkçe"];
+        AvailableThemes = ["Modern", "Retro", "Sade"];
         SaveCommand = new RelayCommand(SavePassword, CanSave);
     }
 
@@ -63,26 +63,13 @@ public class SetupViewModel : ViewModelBase
         {
             SecurityHelper.SaveEnvironmentVariable("MULTISYCH_STORAGE_PASSWORD", Password);
 
-            var envPath = Path.Combine(Directory.GetCurrentDirectory(), ".env");
-            var lines = new List<string>();
-            if (File.Exists(envPath))
-            {
-                lines = new List<string>(File.ReadAllLines(envPath));
-            }
-            
-            void UpdateOrAddEnv(string key, string value)
-            {
-                var index = lines.FindIndex(l => l.StartsWith(key + "="));
-                if (index >= 0) lines[index] = $"{key}={value}";
-                else lines.Add($"{key}={value}");
-            }
-
-            File.WriteAllLines(envPath, lines);
-            
             var userSettings = Program.ServiceProvider.GetRequiredService<IUserSettingsService>();
-            userSettings.Settings.Language = SelectedLanguage;
-            userSettings.Settings.Theme = SelectedTheme;
-            userSettings.SaveAsync().GetAwaiter().GetResult();
+            if (userSettings != null && userSettings.Settings != null)
+            {
+                userSettings.Settings.Language = SelectedLanguage;
+                userSettings.Settings.Theme = SelectedTheme;
+                userSettings.SaveAsync().GetAwaiter().GetResult();
+            }
 
             ErrorMessage = string.Empty;
             _closeAction(true); // Başarı sinyali gönder ve pencereyi kapat

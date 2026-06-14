@@ -2,7 +2,9 @@ using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Input;
 using MultiSych.Desktop.ViewModels;
-using MultiSych.Services.Data.Entities;
+using MultiSych.Services.Data;
+using MultiSych.Services.Models;
+using Avalonia.Platform.Storage;
 
 namespace MultiSych.Desktop.Views;
 

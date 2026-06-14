@@ -8,19 +8,18 @@
         WindowStartupLocation="CenterScreen"
         Closing="Window_Closing">
 
-    <TrayIcon.Icons>
-        <TrayIcons>
-            <TrayIcon ToolTipText="MultiSych" Click="TrayIcon_Show_Click">
-                <TrayIcon.Menu>
-                    <NativeMenu>
-                        <NativeMenuItem Header="Arayüzü Göster" Click="TrayIcon_Show_Click" />
-                        <NativeMenuItemSeparator />
-                        <NativeMenuItem Header="Tamamen Çıkış Yap" Click="TrayIcon_Exit_Click" />
-                    </NativeMenu>
-                </TrayIcon.Menu>
-            </TrayIcon>
-        </TrayIcons>
-    </TrayIcon.Icons>
+    <Window.Styles>
+        <!-- Temalar arası geçişi yumuşatmak için global BrushTransition -->
+        <Style Selector="Border, Grid, StackPanel, TextBlock, Button, Window, UserControl, TextBox, ComboBox">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.35" Easing="CubicEaseInOut"/>
+                    <BrushTransition Property="Foreground" Duration="0:0:0.35" Easing="CubicEaseInOut"/>
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.35" Easing="CubicEaseInOut"/>
+                </Transitions>
+            </Setter>
+        </Style>
+    </Window.Styles>
 
     <Grid ColumnDefinitions="260, *">
         
@@ -81,8 +80,8 @@
                 </TransitioningContentControl.PageTransition>
             </TransitioningContentControl>
             
-            <!-- Tema Değiştirme Butonu (Sağ Üst) -->
-            <Button Grid.Row="0" Content="🌓" Click="ToggleTheme_Click" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="20" Padding="10" CornerRadius="20" Background="#2D2D30" Foreground="White" ToolTip.Tip="Aydınlık / Karanlık Tema" ZIndex="100"/>
+            <!-- Tema Değiştirme Butonu (MVVM Command ile) -->
+            <Button Grid.Row="0" Content="🌓" Command="{Binding ToggleThemeCommand}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="20" Padding="10" CornerRadius="20" Background="#2D2D30" Foreground="White" ToolTip.Tip="Aydınlık / Karanlık Tema" ZIndex="100"/>
             
             <!-- Alt Durum Çubuğu -->
             <Border Grid.Row="1" Background="{DynamicResource SystemRegionBrush}" Padding="15,5" BorderBrush="#20000000" BorderThickness="0,1,0,0">

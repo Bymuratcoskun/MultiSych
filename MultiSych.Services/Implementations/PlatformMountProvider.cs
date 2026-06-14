@@ -121,9 +121,10 @@ namespace MultiSych.Services.Implementations
                 char letter = drive[0];
 
                 _logger.Information("Unmounting Dokan volume from {Drive}", letter);
-                bool success = Dokan.Unmount(letter);
+                var dokan = new Dokan(null);
+                dokan.Unmount(letter);
                 
-                return Task.FromResult(success);
+                return Task.FromResult(true);
             }
             catch (Exception ex) { _logger.Error(ex, "Exception during Windows unmount"); }
             return Task.FromResult(false);
@@ -139,7 +140,7 @@ namespace MultiSych.Services.Implementations
                 if (!Directory.Exists(mountPoint))
                     Directory.CreateDirectory(mountPoint);
 
-                _logger.Warning("Linux FUSE mount is disabled in this build. MountPoint={MountPoint}", mountPoint);
+                _logger.Warning("Linux/macOS FUSE mount is disabled in this build due to .NET 8 compatibility. MountPoint={MountPoint}", mountPoint);
                 await Task.Delay(100);
                 return false;
             }

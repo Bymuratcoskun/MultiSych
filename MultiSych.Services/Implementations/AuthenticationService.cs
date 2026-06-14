@@ -185,6 +185,21 @@ public class AuthenticationService : IAuthenticationService
         };
     }
 
+    public Task<bool> RefreshTokenAsync(AccountCredentials credentials)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task RevokeTokenAsync(AccountCredentials credentials)
+    {
+        throw new NotImplementedException();
+    }
+
+    public bool IsTokenExpired(AccountCredentials credentials)
+    {
+        throw new NotImplementedException();
+    }
+
     private async Task<string?> ListenForCallbackAsync(string redirectUrl)
     {
         using var listener = new HttpListener();

@@ -47,7 +47,7 @@
         <Grid Grid.Row="3" ColumnDefinitions="*, Auto, Auto">
             <TextBox Grid.Column="0" 
                      Text="{Binding CurrentMessage}" 
-                     PlaceholderText="Mesajınızı yazın veya konuşmak için mikrofona tıklayın..." 
+                     Watermark="Mesajınızı yazın veya konuşmak için mikrofona tıklayın..." 
                      AcceptsReturn="True" 
                      MaxHeight="120" 
                      CornerRadius="8" 

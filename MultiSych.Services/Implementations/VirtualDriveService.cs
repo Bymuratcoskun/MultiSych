@@ -29,7 +29,7 @@ public class VirtualDriveService : IVirtualDriveService, IDisposable
     {
         _logger.Information("VirtualDrive Simulation: Requesting mount for account {AccountId}", accountId);
         
-        var account = await _accountStore.GetAccountByIdAsync(accountId);
+        var account = await _accountStore.GetAccountAsync(accountId);
         if (account == null)
         {
             _logger.Warning("Account not found. Cannot mount virtual drive.");

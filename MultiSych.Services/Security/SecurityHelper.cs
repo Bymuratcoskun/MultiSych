@@ -57,33 +57,26 @@ namespace MultiSych.Services.Security
 
             var index = lines.FindIndex(l => l.StartsWith($"{key}=", StringComparison.Ordinal));
             var entry = $"{key}={value}";
-            if (index >= 0)
-            {
-                lines[index] = entry;
-            }
-            else
-            {
-                lines.Add(entry);
-            }
+            if (index >= 0) lines[index] = entry; else lines.Add(entry);
 
             File.WriteAllLines(filePath, lines);
         }
 
-        public static async Task<bool> EnsureLocalDataConsentAsync(SecuritySettings security)
+        public static Task<bool> EnsureLocalDataConsentAsync(SecuritySettings security)
         {
             if (security.UseLocalOnly)
-                return true;
+                return Task.FromResult(true);
 
             if (!IsConsoleInteractive())
             {
                 // Launched from a desktop environment without a terminal.
                 // Assume consent and proceed to show the GUI.
-                return true;
+                return Task.FromResult(true);
             }
 
             Console.Write("Store personal data locally and keep all account data on this machine? (yes/no): ");
             var answer = Console.ReadLine()?.Trim().ToLower();
-            return answer == "yes" || answer == "y";
+            return Task.FromResult(answer == "yes" || answer == "y");
         }
 
         private static bool IsConsoleInteractive()
@@ -233,7 +226,7 @@ namespace MultiSych.Services.Security
                 }
             }
 
-            return output.ToArray();
+            return [.. output];
         }
 
         public static async Task RunSecuritySetupAsync()
@@ -314,7 +307,7 @@ namespace MultiSych.Services.Security
             if (string.IsNullOrWhiteSpace(answer))
                 return defaultYes;
 
-            return answer.StartsWith("y") || answer == "yes";
+            return answer.StartsWith('y') || answer == "yes";
         }
 
         private static string GenerateBase32Secret(int length = 32)

@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+
 namespace MultiSych.Services.Models
 {
     public class AccountCredentials
@@ -8,6 +11,7 @@ namespace MultiSych.Services.Models
         public string? AccessToken { get; set; }
         public string? RefreshToken { get; set; }
         public DateTime ExpiresAt { get; set; }
+        public string? Scopes { get; set; }
         public DateTime CreatedAt { get; set; }
         public Dictionary<string, object>? AdditionalProperties { get; set; }
     }

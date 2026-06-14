@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using MultiSych.Services.Data;
 using MultiSych.Services.Interfaces;
@@ -34,14 +36,14 @@ namespace MultiSych.Services.Implementations
 
                 return entities.Select(ToModel).ToList();
             }
-            catch (Exception ex)
+            catch (System.Exception ex)
             {
                 _logger.Error(ex, "Failed to read accounts from local cache database");
                 return new List<AccountCredentials>();
             }
         }
 
-        public async Task<AccountCredentials?> GetAccountByIdAsync(string accountId)
+        public async Task<AccountCredentials?> GetAccountAsync(string accountId)
         {
             await using var context = await _dbContextFactory.CreateDbContextAsync();
             var entity = await context.Accounts
@@ -50,6 +52,8 @@ namespace MultiSych.Services.Implementations
 
             return entity is null ? null : ToModel(entity);
         }
+
+        public Task<AccountCredentials?> GetAccountByIdAsync(string id) => GetAccountAsync(id);
 
         public async Task SaveAccountAsync(AccountCredentials credentials)
         {
@@ -69,14 +73,14 @@ namespace MultiSych.Services.Implementations
                     existing.RefreshToken = credentials.RefreshToken;
                     existing.ExpiresAt = credentials.ExpiresAt;
                     // CreatedAt BaseEntity üzerinden set edildi, sadece UpdatedAt güncellenir
-                    existing.UpdatedAt = DateTime.UtcNow;
+                    existing.UpdatedAt = System.DateTime.UtcNow;
                     existing.AdditionalProperties = credentials.AdditionalProperties ?? new();
                 }
 
                 await context.SaveChangesAsync();
                 _logger.Information("Saved account {AccountId} to local cache database", credentials.AccountId);
             }
-            catch (Exception ex)
+            catch (System.Exception ex)
             {
                 _logger.Error(ex, "Failed to save account {AccountId} to local cache database", credentials.AccountId);
             }
@@ -95,7 +99,7 @@ namespace MultiSych.Services.Implementations
                 await context.SaveChangesAsync();
                 _logger.Information("Deleted account {AccountId} from local cache database", accountId);
             }
-            catch (Exception ex)
+            catch (System.Exception ex)
             {
                 _logger.Error(ex, "Failed to delete account {AccountId} from local cache database", accountId);
             }
@@ -112,7 +116,7 @@ namespace MultiSych.Services.Implementations
                 RefreshToken = credentials.RefreshToken,
                 ExpiresAt = credentials.ExpiresAt,
                 CreatedAt = credentials.CreatedAt,
-                UpdatedAt = DateTime.UtcNow,
+                UpdatedAt = System.DateTime.UtcNow,
                 AdditionalProperties = credentials.AdditionalProperties ?? new()
             };
         }

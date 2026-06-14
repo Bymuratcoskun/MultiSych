@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Linq;
 using System.Threading.Tasks;
 using MultiSych.Services.Configuration;
 using MultiSych.Services.Interfaces;
@@ -19,6 +20,126 @@ public class AIService : IAIService
     {
         _httpClientFactory = httpClientFactory;
         _config = config;
+    }
+
+    public async Task<string> GetResponseAsync(string prompt, string provider = "hybrid")
+    {
+        return await SendMessageAsync(new List<ChatHistoryMessage> { new() { Role = "user", Content = prompt } }, provider);
+    }
+
+    public async Task<string> GetResponseAsync(string prompt, string provider, AccountCredentials? credentials = null)
+    {
+        return await SendMessageAsync(new List<ChatHistoryMessage> { new() { Role = "user", Content = prompt } }, provider);
+    }
+
+    public async Task<string> SendMessageAsync(string message, List<string> conversationHistory, string provider = "hybrid")
+    {
+        var history = new List<ChatHistoryMessage>();
+        for (var i = 0; i < conversationHistory.Count; i += 2)
+        {
+            history.Add(new ChatHistoryMessage { Role = "user", Content = conversationHistory[i] });
+            if (i + 1 < conversationHistory.Count)
+            {
+                history.Add(new ChatHistoryMessage { Role = "model", Content = conversationHistory[i + 1] });
+            }
+        }
+        history.Add(new ChatHistoryMessage { Role = "user", Content = message });
+        return await SendMessageAsync(history, provider);
+    }
+
+    public async Task<string> AnalyzeEmailAsync(EmailMessage email, string provider = "hybrid")
+    {
+        if (email == null) throw new ArgumentNullException(nameof(email));
+
+        var prompt = $@"
+Lütfen aşağıdaki e-posta içeriğini detaylı bir şekilde analiz et. 
+Bana şu başlıklar altında profesyonel bir özet ve analiz sun:
+1. **Kısa Özet:** E-postanın ana fikri (1-2 cümle).
+2. **Önem Derecesi:** (Düşük, Orta, Yüksek) ve kısa gerekçesi.
+3. **Aksiyon Öğeleri:** Yapılması gereken işlemler veya cevaplanması gereken sorular var mı? (Madde imleri ile listele, yoksa 'Yok' yaz).
+4. **Duygu/Ton:** E-postanın genel dili (Örn: Resmi, acil, samimi, şikayet vb.).
+
+E-posta Konusu: {email.Subject}
+Gönderen: {email.From}
+Tarih: {email.ReceivedDate}
+
+E-posta İçeriği:
+{email.Body}";
+
+        return await GetResponseAsync(prompt, provider);
+    }
+
+    public async Task<List<CalendarEvent>> GenerateCalendarSuggestionsAsync(List<EmailMessage> emails, string provider = "hybrid")
+    {
+        if (emails == null || !emails.Any()) return new List<CalendarEvent>();
+
+        var promptBuilder = new StringBuilder();
+        promptBuilder.AppendLine("Lütfen aşağıdaki e-postaları analiz et ve potansiyel takvim etkinliklerini (toplantı, uçuş, randevu vb.) çıkar.");
+        promptBuilder.AppendLine("SADECE aşağıdaki formatta geçerli bir JSON dizisi (array) döndür, fazladan hiçbir metin yazma:");
+        promptBuilder.AppendLine(@"[
+  {
+    ""title"": ""Etkinlik Başlığı"",
+    ""description"": ""Kısa açıklama"",
+    ""location"": ""Yer veya Online"",
+    ""startTime"": ""YYYY-MM-DDTHH:mm:ssZ"",
+    ""endTime"": ""YYYY-MM-DDTHH:mm:ssZ"",
+    ""isAllDay"": false
+  }
+]");
+        promptBuilder.AppendLine("Eğer etkinlik yoksa boş bir dizi [] döndür.\n");
+
+        foreach (var email in emails)
+        {
+            promptBuilder.AppendLine("--- E-Posta Başlangıcı ---");
+            promptBuilder.AppendLine($"Konu: {email.Subject}");
+            promptBuilder.AppendLine($"Kimden: {email.From}");
+            promptBuilder.AppendLine($"Tarih: {email.ReceivedDate:O}");
+            promptBuilder.AppendLine($"İçerik: {email.Body}");
+            promptBuilder.AppendLine("--- E-Posta Sonu ---\n");
+        }
+
+        var aiResponse = await GetResponseAsync(promptBuilder.ToString(), provider);
+        
+        var jsonStr = aiResponse.Trim();
+        if (jsonStr.StartsWith("```json", StringComparison.OrdinalIgnoreCase)) jsonStr = jsonStr.Substring(7);
+        if (jsonStr.StartsWith("```")) jsonStr = jsonStr.Substring(3);
+        if (jsonStr.EndsWith("```")) jsonStr = jsonStr.Substring(0, jsonStr.Length - 3);
+        jsonStr = jsonStr.Trim();
+
+        if (string.IsNullOrWhiteSpace(jsonStr) || jsonStr == "[]") 
+            return new List<CalendarEvent>();
+
+        var foundEvents = new List<CalendarEvent>();
+        try
+        {
+            using var doc = JsonDocument.Parse(jsonStr);
+            foreach (var element in doc.RootElement.EnumerateArray())
+            {
+                var calendarEvent = new CalendarEvent
+                {
+                    EventId = Guid.NewGuid().ToString(),
+                    Title = element.TryGetProperty("title", out var t) ? t.GetString() ?? "Yeni Etkinlik" : "Yeni Etkinlik",
+                    Description = element.TryGetProperty("description", out var d) ? d.GetString() : string.Empty,
+                    Location = element.TryGetProperty("location", out var l) ? l.GetString() : string.Empty,
+                    StartTime = element.TryGetProperty("startTime", out var st) && DateTime.TryParse(st.GetString(), out var sdt) ? sdt : DateTime.UtcNow,
+                    EndTime = element.TryGetProperty("endTime", out var et) && DateTime.TryParse(et.GetString(), out var edt) ? edt : DateTime.UtcNow.AddHours(1),
+                    IsAllDay = element.TryGetProperty("isAllDay", out var iad) && iad.GetBoolean()
+                };
+                foundEvents.Add(calendarEvent);
+            }
+        }
+        catch
+        {
+            // JSON okuma başarısız olursa boş liste döndür (AI beklenen formatta çıktı vermedi demektir)
+        }
+
+        return foundEvents;
+    }
+
+    public async Task<string> SummarizeDocumentAsync(string content, string provider = "hybrid")
+    {
+        var prompt = $"Lütfen aşağıdaki metni dikkatlice incele ve en önemli noktalarını vurgulayarak profesyonel bir özet çıkar:\n\n{content}";
+        return await GetResponseAsync(prompt, provider);
     }
 
     public async Task<string> SendMessageAsync(List<ChatHistoryMessage> conversation, string provider)

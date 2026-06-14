@@ -4,7 +4,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using MultiSych.Services.Data.Entities;
 using MultiSych.Services.Data;
 using MultiSych.Services.Interfaces;
 using MultiSych.Services.Models;
@@ -62,10 +61,15 @@ public class HybridAIService : IHybridAIService
                     {
                         dbContext.CachedEvents.Add(new CalendarEventEntity
                         {
-                            AccountId = account.AccountId, EventId = foundEvent.EventId, Title = foundEvent.Title,
-                            Description = foundEvent.Description, Location = foundEvent.Location,
-                            StartTime = foundEvent.StartTime, EndTime = foundEvent.EndTime,
-                            IsAllDay = foundEvent.IsAllDay, CreatedAt = DateTime.UtcNow
+                            AccountId = account.AccountId ?? string.Empty, 
+                            EventId = foundEvent.EventId ?? Guid.NewGuid().ToString(), 
+                            Title = foundEvent.Title ?? "Bilinmeyen Etkinlik",
+                            Description = foundEvent.Description ?? string.Empty, 
+                            Location = foundEvent.Location ?? string.Empty,
+                            StartTime = foundEvent.StartTime, 
+                            EndTime = foundEvent.EndTime,
+                            IsAllDay = foundEvent.IsAllDay, 
+                            CreatedAt = DateTime.UtcNow
                         });
                     }
                 }
@@ -89,15 +93,24 @@ public class HybridAIService : IHybridAIService
                 _logger.Information("Sending email '{Subject}' to Gemini AI for event extraction...", email.Subject);
                 
                 var prompt = $@"
-Lütfen aşağıdaki e-posta içeriğini analiz et ve herhangi bir takvim etkinliği (toplantı, randevu, uçuş vb.) olup olmadığını kontrol et. 
-Eğer etkinlik bulursan, SADECE aşağıdaki formatta bir JSON dizisi (array) döndür. Ekstra metin veya markdown bloğu ekleme:
+Lütfen aşağıdaki e-posta içeriğini dikkatlice analiz et ve herhangi bir takvim etkinliği (toplantı, randevu, uçuş, mülakat vb.) olup olmadığını kontrol et. 
+
+ÖNEMLİ KURALLAR:
+1. Başlangıç ve bitiş saatlerini (startTime, endTime) mutlaka ISO 8601 (YYYY-MM-DDTHH:mm:ss) formatında ver.
+2. Bitiş saati açıkça yazmıyorsa, toplantının bağlamına veya türüne göre tutarlı bir bitiş süresi hesapla (örneğin: standart bir toplantı veya mülakat için başlangıçtan 1 saat sonrasını ayarla).
+3. Etkinlik tüm gün sürecekse (isAllDay: true) startTime ve endTime değerlerini o günün gece yarısına göre ayarla.
+4. Çıktı olarak SADECE aşağıdaki formatta bir JSON dizisi (array) döndür. Asla fazladan metin, markdown veya açıklama ekleme.
+5. Eğer etkinlikte birden fazla kişi/katılımcı bulunuyorsa, bu kişilerin isimlerini ""attendees"" dizisinde listele.
+
+Format:
 [{{
     ""title"": ""Etkinlik Başlığı"",
     ""description"": ""Kısa açıklama"",
     ""location"": ""Yer veya Online"",
     ""startTime"": ""YYYY-MM-DDTHH:mm:ss"",
     ""endTime"": ""YYYY-MM-DDTHH:mm:ss"",
-    ""isAllDay"": false
+    ""isAllDay"": false,
+    ""attendees"": [""Kişi 1"", ""Kişi 2""]
 }}]
 Eğer etkinlik yoksa sadece boş bir dizi [] döndür.
 
@@ -117,11 +130,22 @@ E-posta İçeriği: {email.Body}";
                 using var doc = System.Text.Json.JsonDocument.Parse(jsonStr);
                 foreach (var element in doc.RootElement.EnumerateArray())
                 {
+                    var description = element.TryGetProperty("description", out var d) ? d.GetString() : string.Empty;
+                    
+                    if (element.TryGetProperty("attendees", out var attElement) && attElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        var attendees = attElement.EnumerateArray().Select(a => a.GetString()).Where(a => !string.IsNullOrWhiteSpace(a)).ToList();
+                        if (attendees.Any())
+                        {
+                            description += $"\n\nKişiler/Katılımcılar ({attendees.Count}): {string.Join(", ", attendees)}";
+                        }
+                    }
+
                     var calendarEvent = new CalendarEvent
                     {
                         EventId = Guid.NewGuid().ToString(),
                         Title = element.TryGetProperty("title", out var t) ? t.GetString() ?? "Bilinmeyen Etkinlik" : "Bilinmeyen Etkinlik",
-                        Description = element.TryGetProperty("description", out var d) ? d.GetString() : string.Empty,
+                        Description = description,
                         Location = element.TryGetProperty("location", out var l) ? l.GetString() : string.Empty,
                         StartTime = element.TryGetProperty("startTime", out var st) && DateTime.TryParse(st.GetString(), out var sdt) ? sdt : DateTime.UtcNow,
                         EndTime = element.TryGetProperty("endTime", out var et) && DateTime.TryParse(et.GetString(), out var edt) ? edt : DateTime.UtcNow.AddHours(1),

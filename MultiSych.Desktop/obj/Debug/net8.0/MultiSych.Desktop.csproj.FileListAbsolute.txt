@@ -1,0 +1,13 @@
+/home/user/MultiSych/MultiSych.Desktop/obj/Debug/net8.0/MultiSych.Desktop.csproj.AssemblyReference.cache
+/home/user/MultiSych/MultiSych.Desktop/obj/Debug/net8.0/Avalonia/Resources.Inputs.cache
+/home/user/MultiSych/MultiSych.Desktop/obj/Debug/net8.0/Avalonia/resources
+/home/user/MultiSych/MultiSych.Desktop/obj/Debug/net8.0/MultiSych.Desktop.GeneratedMSBuildEditorConfig.editorconfig
+/home/user/MultiSych/MultiSych.Desktop/obj/Debug/net8.0/MultiSych.Desktop.AssemblyInfoInputs.cache
+/home/user/MultiSych/MultiSych.Desktop/obj/Debug/net8.0/MultiSych.Desktop.AssemblyInfo.cs
+/home/user/MultiSych/MultiSych.Desktop/obj/Debug/net8.0/MultiSych.Desktop.csproj.CoreCompileInputs.cache
+/home/user/MultiSych/MultiSych.Desktop/obj/Debug/net8.0/MultiSych.Desktop.sourcelink.json
+/home/user/MultiSych/MultiSych.Desktop/obj/Debug/net8.0/Avalonia/references
+/home/user/MultiSych/MultiSych.Desktop/obj/Debug/net8.0/Avalonia/original.dll
+/home/user/MultiSych/MultiSych.Desktop/obj/Debug/net8.0/Avalonia/original.pdb
+/home/user/MultiSych/MultiSych.Desktop/obj/Debug/net8.0/Avalonia/original.ref.dll
+/home/user/MultiSych/MultiSych.Desktop/obj/Debug/net8.0/refint/MultiSych.Desktop.dll

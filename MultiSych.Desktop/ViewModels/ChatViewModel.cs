@@ -29,9 +29,9 @@ public class CodeSegment : MessageSegment
     public string Language { get => _language; set => SetProperty(ref _language, value); }
 }
 
-public class ChatMessage : ViewModelBase
+public class ChatUIMessage : ViewModelBase
 {
-    public ObservableCollection<MessageSegment> Segments { get; } = new();
+    public ObservableCollection<MessageSegment> Segments { get; } = [];
     public bool IsUser { get; set; }
     public string SenderName => IsUser ? "Siz" : "Yapay Zeka";
     public string Time => DateTime.Now.ToString("HH:mm");
@@ -49,7 +49,7 @@ public class ChatViewModel : ViewModelBase
     private bool _isSpeechModelLoaded;
     private string _tempAudioFilePath = string.Empty;
 
-    public ObservableCollection<ChatMessage> Messages { get; } = new();
+    public ObservableCollection<ChatUIMessage> Messages { get; } = [];
 
     public ChatViewModel(IAIService aiService, MultiSychConfig config, IAudioRecordingService audioRecordingService, ISpeechService speechService)
     {
@@ -61,7 +61,7 @@ public class ChatViewModel : ViewModelBase
         ToggleRecordingCommand = new RelayCommand(async _ => await ToggleRecordingAsync(), _ => !IsBusy);
 
         // Başlangıç mesajı
-        var initialMessage = new ChatMessage { IsUser = false };
+        var initialMessage = new ChatUIMessage { IsUser = false };
         initialMessage.Segments.Add(new TextSegment { Text = "Merhaba! Size nasıl yardımcı olabilirim? Dosyalarınızı özetleyebilir, programınızı sorgulayabilir veya genel sorularınızı yanıtlayabilirim." });
         Messages.Add(initialMessage);
     }
@@ -110,7 +110,7 @@ public class ChatViewModel : ViewModelBase
         var userText = InputText;
         InputText = string.Empty;
         
-        var userMessage = new ChatMessage { IsUser = true };
+        var userMessage = new ChatUIMessage { IsUser = true };
         userMessage.Segments.Add(new TextSegment { Text = userText });
         Messages.Add(userMessage);
         
@@ -123,16 +123,12 @@ public class ChatViewModel : ViewModelBase
             // Son 10 mesajı context olarak al
             var conversationHistory = Messages
                 .TakeLast(10)
-                .Select(m => new ChatHistoryMessage
-                {
-                    Role = m.IsUser ? "user" : "model",
-                    Content = string.Join(Environment.NewLine, m.Segments.Select(s => s is TextSegment ts ? ts.Text : (s as CodeSegment)?.Code ?? ""))
-                })
+                .Select(m => string.Join(Environment.NewLine, m.Segments.Select(s => s is TextSegment ts ? ts.Text : (s as CodeSegment)?.Code ?? "")))
                 .ToList();
 
-            var response = await _aiService.SendMessageAsync(conversationHistory, provider);
+            var response = await _aiService.SendMessageAsync(userText, conversationHistory, provider);
             
-            var aiMessage = new ChatMessage { IsUser = false };
+            var aiMessage = new ChatUIMessage { IsUser = false };
             Dispatcher.UIThread.Post(() => Messages.Add(aiMessage));
             
             // AI Cevabını daktilo efekti ile ekrana yansıt ve bitene kadar UI'ın meşgul (IsBusy) kalmasını sağla
@@ -142,7 +138,7 @@ public class ChatViewModel : ViewModelBase
         {
             Dispatcher.UIThread.Post(() => 
             {
-                var errorMessage = new ChatMessage { IsUser = false };
+                var errorMessage = new ChatUIMessage { IsUser = false };
                 errorMessage.Segments.Add(new TextSegment { Text = $"Hata: {ex.Message}" });
                 Messages.Add(errorMessage);
             });
@@ -153,7 +149,7 @@ public class ChatViewModel : ViewModelBase
         }
     }
     
-    private async Task TypewriterEffectAsync(ChatMessage message, string rawText)
+    private async Task TypewriterEffectAsync(ChatUIMessage message, string rawText)
     {
         var segments = ParseSegments(rawText);
         
@@ -228,7 +224,7 @@ public class ChatViewModel : ViewModelBase
                 IsBusy = true;
                 if (!_isSpeechModelLoaded)
                 {
-                    var loadingMessage = new ChatMessage { IsUser = false };
+                    var loadingMessage = new ChatUIMessage { IsUser = false };
                     loadingMessage.Segments.Add(new TextSegment { Text = "Whisper AI modeli yükleniyor... Bu işlem ilk seferde biraz zaman alabilir." });
                     Dispatcher.UIThread.Post(() => Messages.Add(loadingMessage));
                     var modelPath = Path.Combine(Directory.GetCurrentDirectory(), "ggml-base.bin");
@@ -249,7 +245,7 @@ public class ChatViewModel : ViewModelBase
 
                 try
                 {
-                    var processingMessage = new ChatMessage { IsUser = false };
+                    var processingMessage = new ChatUIMessage { IsUser = false };
                     processingMessage.Segments.Add(new TextSegment { Text = "Ses işleniyor..." });
                     Dispatcher.UIThread.Post(() => Messages.Add(processingMessage));
                     var text = await _speechService.TranscribeAudioAsync(_tempAudioFilePath);
@@ -264,7 +260,7 @@ public class ChatViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            var errorMessage = new ChatMessage { IsUser = false };
+            var errorMessage = new ChatUIMessage { IsUser = false };
             errorMessage.Segments.Add(new TextSegment { Text = $"Ses kaydı hatası: {ex.Message}" });
             Dispatcher.UIThread.Post(() => Messages.Add(errorMessage));
             if (IsRecording) await _audioRecordingService.StopRecordingAsync();

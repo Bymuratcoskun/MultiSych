@@ -1,0 +1,21 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="MultiSych.Desktop.Views.AuthWindow"
+        Title="MultiSych - Authentication" Width="400" Height="300"
+        WindowStartupLocation="CenterScreen">
+    <StackPanel Margin="20" Spacing="15">
+        <TextBlock Text="Güvenlik Doğrulaması" FontSize="20" FontWeight="Bold" HorizontalAlignment="Center"/>
+        
+        <TextBlock Text="Parola:" />
+        <TextBox Text="{Binding Password}" PasswordChar="*" />
+        
+        <TextBlock Text="2FA Kodu (Varsa):" />
+        <TextBox Text="{Binding TwoFactorCode}" />
+        
+        <CheckBox Content="Bu cihazda 30 gün boyunca beni hatırla" IsChecked="{Binding RememberMe}" HorizontalAlignment="Center" />
+        
+        <Button Content="Giriş" Command="{Binding LoginCommand}" HorizontalAlignment="Center" Width="100"/>
+        
+        <TextBlock Text="{Binding ErrorMessage}" Foreground="Red" HorizontalAlignment="Center" />
+    </StackPanel>
+</Window>

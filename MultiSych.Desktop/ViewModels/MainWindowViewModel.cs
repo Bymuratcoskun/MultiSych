@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Windows.Input;
+using Avalonia.Threading;
+using ReactiveUI;
 using IWindowService = MultiSych.Desktop.Services.IWindowService;
 using MultiSych.Services.Configuration;
 using MultiSych.Services.Interfaces;
@@ -30,15 +32,16 @@ public class MainWindowViewModel : ViewModelBase
     private string _statusMessage = "Ready.";
     private string _selectedSection = "Dashboard";
 
-    public ObservableCollection<string> Themes { get; } = new() { "Modern", "Retro", "Sade" };
-    public ObservableCollection<string> IconStyles { get; } = new() { "Modern", "Retro", "Sade" };
-    public ObservableCollection<NavigationItem> NavigationItems { get; } = new();
+    public ObservableCollection<string> Themes { get; } = ["Modern", "Retro", "Sade"];
+    public ObservableCollection<string> IconStyles { get; } = ["Modern", "Retro", "Sade"];
+    public ObservableCollection<NavigationItem> NavigationItems { get; } = [];
 
     public ICommand RefreshCommand { get; }
     public ICommand NavigateCommand { get; }
     public ICommand OpenCopilotChatCommand { get; }
     public ICommand OpenGeminiChatCommand { get; }
     public ICommand OpenYandexChatCommand { get; }
+    public ICommand ToggleThemeCommand { get; }
 
     public DashboardViewModel DashboardPage { get; }
     public AccountsViewModel AccountsPage { get; }
@@ -87,12 +90,29 @@ public class MainWindowViewModel : ViewModelBase
         OpenCopilotChatCommand = new RelayCommand(_ => _windowService.ShowAIChat("copilot"));
         OpenGeminiChatCommand = new RelayCommand(_ => _windowService.ShowAIChat("gemini"));
         OpenYandexChatCommand = new RelayCommand(_ => _windowService.ShowAIChat("yandex"));
+        ToggleThemeCommand = new RelayCommand(_ => SelectedTheme = SelectedTheme == "Sade" ? "Modern" : "Sade");
 
         _selectedTheme = _userSettingsService.Settings.Theme;
-        App.ApplyTheme(_selectedTheme);
+        MultiSych.Desktop.App.ApplyTheme(_selectedTheme);
 
         UpdateNavigationItems();
         CurrentPageViewModel = DashboardPage;
+
+        // Arka plandan veya sesli asistandan gelen komutları dinleyerek sekmeyi ve bildirimleri güncelle
+        MessageBus.Current.Listen<string>("NavigationIntent")
+            .Subscribe(section => 
+            {
+                Dispatcher.UIThread.Post(() => Navigate(section));
+            });
+            
+        MessageBus.Current.Listen<string>("NotificationIntent")
+            .Subscribe(message => 
+            {
+                Dispatcher.UIThread.Post(() => 
+                {
+                    _windowService.ShowNotification("Sesli Komut", message, MultiSych.Desktop.Services.NotificationSound.Success);
+                });
+            });
     }
 
     public string SelectedTheme
@@ -101,7 +121,7 @@ public class MainWindowViewModel : ViewModelBase
         set
         {
             if (SetProperty(ref _selectedTheme, value))
-                App.ApplyTheme(value);
+                MultiSych.Desktop.App.ApplyTheme(value);
         }
     }
 
@@ -249,20 +269,13 @@ public class MainWindowViewModel : ViewModelBase
     }
 }
 
-public sealed class NavigationItem : ViewModelBase
+public sealed class NavigationItem(string label, string iconGlyph) : ViewModelBase
 {
     private bool _isSelected;
 
-    public NavigationItem(string label, string iconGlyph)
-    {
-        Label = label;
-        IconGlyph = iconGlyph;
-        Section = label;
-    }
-
-    public string Label { get; }
-    public string IconGlyph { get; }
-    public string Section { get; }
+    public string Label { get; } = label;
+    public string IconGlyph { get; } = iconGlyph;
+    public string Section { get; } = label;
 
     public bool IsSelected
     {
@@ -271,16 +284,10 @@ public sealed class NavigationItem : ViewModelBase
     }
 }
 
-public sealed class RelayCommand : ICommand
+public sealed class RelayCommand(Action<object?> execute, Func<object?, bool>? canExecute = null) : ICommand
 {
-    private readonly Action<object?> _execute;
-    private readonly Func<object?, bool>? _canExecute;
-
-    public RelayCommand(Action<object?> execute, Func<object?, bool>? canExecute = null)
-    {
-        _execute = execute ?? throw new ArgumentNullException(nameof(execute));
-        _canExecute = canExecute;
-    }
+    private readonly Action<object?> _execute = execute ?? throw new ArgumentNullException(nameof(execute));
+    private readonly Func<object?, bool>? _canExecute = canExecute;
 
     public bool CanExecute(object? parameter) => _canExecute?.Invoke(parameter) ?? true;
 
@@ -291,16 +298,10 @@ public sealed class RelayCommand : ICommand
     public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
 }
 
-public sealed class RelayCommand<T> : ICommand
+public sealed class RelayCommand<T>(Action<T?> execute, Func<T?, bool>? canExecute = null) : ICommand
 {
-    private readonly Action<T?> _execute;
-    private readonly Func<T?, bool>? _canExecute;
-
-    public RelayCommand(Action<T?> execute, Func<T?, bool>? canExecute = null)
-    {
-        _execute = execute ?? throw new ArgumentNullException(nameof(execute));
-        _canExecute = canExecute;
-    }
+    private readonly Action<T?> _execute = execute ?? throw new ArgumentNullException(nameof(execute));
+    private readonly Func<T?, bool>? _canExecute = canExecute;
 
     public bool CanExecute(object? parameter)
     {

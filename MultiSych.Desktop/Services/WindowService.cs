@@ -10,23 +10,15 @@ using MultiSych.Desktop.ViewModels;
 
 namespace MultiSych.Desktop.Services;
 
-public class WindowService : IWindowService
+public class WindowService(IServiceProvider serviceProvider) : IWindowService
 {
-    private readonly IServiceProvider _serviceProvider;
-    private WindowNotificationManager? _notificationManager;
-
-    public WindowService(IServiceProvider serviceProvider)
-    {
-        _serviceProvider = serviceProvider;
-    }
-
     public void ShowAddAccountDialog()
     {
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop && desktop.MainWindow != null)
         {
             var dialog = new AddAccountWindow
             {
-                DataContext = _serviceProvider.GetRequiredService<AddAccountViewModel>()
+                DataContext = serviceProvider.GetRequiredService<AddAccountViewModel>()
             };
             
             // Pencereyi ana pencerenin üzerinde "Dialog (Modal)" olarak açar
@@ -58,7 +50,7 @@ public class WindowService : IWindowService
             if (extensions != null && extensions.Length > 0)
             {
                 var filter = new Avalonia.Platform.Storage.FilePickerFileType("Allowed Files") { Patterns = extensions };
-                options.FileTypeFilter = new[] { filter };
+                options.FileTypeFilter = [filter];
             }
 
             var files = await desktop.MainWindow.StorageProvider.OpenFilePickerAsync(options);
@@ -69,6 +61,7 @@ public class WindowService : IWindowService
         return null;
     }
 
+#pragma warning disable CA1822 // Member does not access instance data and can be marked as static
     public async Task<string?> SaveFileDialogAsync(string title, string defaultExtension)
     {
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop && desktop.MainWindow != null)
@@ -85,6 +78,7 @@ public class WindowService : IWindowService
         }
         return null;
     }
+#pragma warning restore CA1822
 
     public void ShowNotification(string title, string message, NotificationSound sound = NotificationSound.Default)
     {

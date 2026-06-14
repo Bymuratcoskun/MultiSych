@@ -7,7 +7,7 @@ using Serilog;
 namespace MultiSych.Services.Implementations;
 
 /// <summary>
-/// Linux/macOS FUSE desteği bu derleme için devre dışı bırakıldı.
+/// Linux/macOS FUSE desteği kütüphane uyumsuzluğu nedeniyle bu derleme için devre dışı bırakıldı.
 /// </summary>
 public class CloudFuseFileSystem
 {
@@ -16,7 +16,7 @@ public class CloudFuseFileSystem
     private readonly IDbContextFactory<LocalCacheDbContext> _dbContextFactory;
     private readonly ILogger _logger = Log.ForContext<CloudFuseFileSystem>();
 
-    public CloudFuseFileSystem(string accountId, IStorageService storageService, IDbContextFactory<LocalCacheDbContext> dbContextFactory)
+    public CloudFuseFileSystem(string mountPoint, string accountId, IStorageService storageService, IDbContextFactory<LocalCacheDbContext> dbContextFactory)
     {
         _accountId = accountId;
         _storageService = storageService;

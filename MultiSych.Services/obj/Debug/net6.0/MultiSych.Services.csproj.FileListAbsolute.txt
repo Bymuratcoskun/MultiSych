@@ -1,0 +1,6 @@
+/home/user/MultiSych/MultiSych.Services/obj/Debug/net6.0/MultiSych.Services.csproj.AssemblyReference.cache
+/home/user/MultiSych/MultiSych.Services/obj/Debug/net6.0/MultiSych.Services.GeneratedMSBuildEditorConfig.editorconfig
+/home/user/MultiSych/MultiSych.Services/obj/Debug/net6.0/MultiSych.Services.AssemblyInfoInputs.cache
+/home/user/MultiSych/MultiSych.Services/obj/Debug/net6.0/MultiSych.Services.AssemblyInfo.cs
+/home/user/MultiSych/MultiSych.Services/obj/Debug/net6.0/MultiSych.Services.csproj.CoreCompileInputs.cache
+/home/user/MultiSych/MultiSych.Services/obj/Debug/net6.0/MultiSych.Services.sourcelink.json

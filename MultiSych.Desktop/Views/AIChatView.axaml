@@ -41,7 +41,7 @@
 
         <!-- Mesaj Yazma Alanı (Input Area) -->
         <Grid Grid.Row="2" ColumnDefinitions="*, Auto, Auto">
-            <TextBox Grid.Column="0" Text="{Binding CurrentMessage}" PlaceholderText="Mesajınızı buraya yazın..." AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="100" VerticalAlignment="Bottom"/>
+            <TextBox Grid.Column="0" Text="{Binding CurrentMessage}" Watermark="Mesajınızı buraya yazın..." AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="100" VerticalAlignment="Bottom"/>
             <Button Grid.Column="1" Command="{Binding ToggleRecordingCommand}" Content="{Binding RecordButtonText}" ToolTip.Tip="Mikrofon (Whisper AI)" FontSize="20" Margin="10,0,0,0" VerticalAlignment="Bottom" Padding="15,10" Background="#11000000"/>
             <Button Grid.Column="2" Command="{Binding SendMessageCommand}" Content="Gönder" Margin="10,0,0,0" VerticalAlignment="Bottom" Padding="20,10" Background="#0078D7" Foreground="White" FontWeight="Bold"/>
         </Grid>

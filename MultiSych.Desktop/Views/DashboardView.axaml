@@ -17,14 +17,14 @@
             </Border>
 
             <!-- Sayaçlar -->
-            <WrapPanel Spacing="20" ItemWidth="200">
-                <Border Background="#2D2D30" Padding="20" CornerRadius="8">
+            <WrapPanel ItemWidth="200">
+                <Border Background="#2D2D30" Padding="20" CornerRadius="8" Margin="0,0,20,20">
                     <StackPanel Spacing="10">
                         <TextBlock Text="🔗 Bağlı Hesaplar" FontSize="16" Foreground="#CCCCCC"/>
                         <TextBlock Text="{Binding TotalAccounts}" FontSize="36" FontWeight="SemiBold" Foreground="White"/>
                     </StackPanel>
                 </Border>
-                <Border Background="#2D2D30" Padding="20" CornerRadius="8">
+                <Border Background="#2D2D30" Padding="20" CornerRadius="8" Margin="0,0,20,20">
                     <StackPanel Spacing="10">
                         <TextBlock Text="📧 Toplam E-Posta" FontSize="16" Foreground="#CCCCCC"/>
                         <TextBlock Text="{Binding TotalEmails}" FontSize="36" FontWeight="SemiBold" Foreground="White"/>
@@ -32,7 +32,7 @@
                 </Border>
                 
                 <!-- Tıklanabilir hale getirilen Takvim Etkinlikleri Kartı -->
-                <Button Background="#2D2D30" Padding="20" CornerRadius="8" 
+                <Button Background="#2D2D30" Padding="20" CornerRadius="8" Margin="0,0,20,20"
                         Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).NavigateCommand}" 
                         CommandParameter="Calendar" Cursor="Hand" ToolTip.Tip="Takvim görünümüne gitmek için tıklayın">
                     <StackPanel Spacing="10">
@@ -41,7 +41,7 @@
                     </StackPanel>
                 </Button>
 
-                <Border Background="#2D2D30" Padding="20" CornerRadius="8">
+                <Border Background="#2D2D30" Padding="20" CornerRadius="8" Margin="0,0,20,20">
                     <StackPanel Spacing="10">
                         <TextBlock Text="📁 Toplam Dosya" FontSize="16" Foreground="#CCCCCC"/>
                         <TextBlock Text="{Binding TotalFiles}" FontSize="36" FontWeight="SemiBold" Foreground="White"/>

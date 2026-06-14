@@ -1,4 +1,7 @@
 using MultiSych.Services.Models;
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace MultiSych.Services.Interfaces
 {

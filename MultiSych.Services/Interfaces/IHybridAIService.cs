@@ -1,11 +1,13 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using MultiSych.Services.Data.Entities;
+using MultiSych.Services.Models;
+using MultiSych.Services.Data;
 
 namespace MultiSych.Services.Interfaces;
 
 public interface IHybridAIService
 {
-    // Bu interface'in diğer metotları burada yer alabilir.
-    // Biz sadece SendMessageAsync'in imzasını güncelliyoruz.
+    Task AnalyzeUnprocessedEmailsAsync(string? accountId = null);
+    Task<List<CalendarEvent>> AnalyzeEmailsForEventsAsync(List<EmailMessageEntity> emails);
+    Task<string> GenerateDailySummaryAsync();
 }

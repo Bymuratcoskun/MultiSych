@@ -8,7 +8,7 @@ using Avalonia.Threading;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using MultiSych.Services.Data;
-using MultiSych.Services.Data.Entities;
+using MultiSych.Services.Models;
 
 namespace MultiSych.Desktop.ViewModels;
 
@@ -17,9 +17,9 @@ public class CalendarViewModel : ViewModelBase
     private readonly IServiceScopeFactory _scopeFactory;
     private bool _isLoading;
     private DateTime? _selectedDate;
-    private List<CalendarEventEntity> _allEvents = new();
+    private List<CalendarEventEntity> _allEvents = [];
 
-    public ObservableCollection<CalendarEventEntity> Events { get; } = new();
+    public ObservableCollection<CalendarEventEntity> Events { get; } = [];
 
     public CalendarViewModel(IServiceScopeFactory scopeFactory)
     {

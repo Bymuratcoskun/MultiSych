@@ -12,10 +12,10 @@ public class AddAccountViewModel : ViewModelBase
 {
     private readonly IAuthenticationService _authService;
     private readonly IAccountStore _accountStore;
-    private readonly IWindowService _windowService;
+    private readonly Desktop.Services.IWindowService _windowService;
     private readonly MultiSychConfig _config;
 
-    public AddAccountViewModel(IAuthenticationService authService, IAccountStore accountStore, IWindowService windowService, MultiSychConfig config)
+    public AddAccountViewModel(IAuthenticationService authService, IAccountStore accountStore, Desktop.Services.IWindowService windowService, MultiSychConfig config)
     {
         _authService = authService;
         _accountStore = accountStore;
@@ -35,7 +35,7 @@ public class AddAccountViewModel : ViewModelBase
     {
         try
         {
-            Services.Models.AccountCredentials? credentials = null;
+            global::MultiSych.Services.Models.AccountCredentials? credentials = null;
 
             if (provider == "Google")
                 credentials = await _authService.AuthenticateGoogleAsync(_config.Google?.ClientId ?? "", _config.Google?.ClientSecret ?? "", _config.Google?.RedirectUrl ?? "http://localhost:5000/");

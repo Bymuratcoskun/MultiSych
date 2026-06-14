@@ -67,7 +67,7 @@ namespace MultiSych.Services.Implementations
                     string filePath;
                     if (credentials.Provider == "Yandex")
                     {
-                        filePath = file.FileId.Replace("disk:", "");
+                        filePath = (file.FileId ?? string.Empty).Replace("disk:", "");
                         if (!filePath.StartsWith("/")) filePath = "/" + filePath;
                     }
                     else

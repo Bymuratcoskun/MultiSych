@@ -1,3 +1,6 @@
+using System;
+using System.Threading.Tasks;
+
 namespace MultiSych.Services.Interfaces
 {
     public interface IErrorReporter

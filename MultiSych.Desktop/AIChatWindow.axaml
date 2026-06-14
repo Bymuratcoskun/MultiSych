@@ -59,7 +59,7 @@
 
       <!-- Input Area -->
       <Grid Grid.Row="2" ColumnDefinitions="*, Auto">
-        <TextBox Grid.Column="0" PlaceholderText="Message AI Assistant..." Text="{Binding CurrentMessage, Mode=TwoWay}"
+        <TextBox Grid.Column="0" Watermark="Message AI Assistant..." Text="{Binding CurrentMessage, Mode=TwoWay}"
                  HorizontalAlignment="Stretch" AcceptsReturn="True" MinHeight="60" MaxHeight="150" TextWrapping="Wrap" Margin="0,0,10,0" CornerRadius="8"/>
                  
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Bottom">

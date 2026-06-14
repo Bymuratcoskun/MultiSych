@@ -8,7 +8,6 @@ using Microsoft.Extensions.Hosting;
 using Serilog;
 using MultiSych.Services.Interfaces;
 using MultiSych.Services.Configuration;
-using MultiSych.Desktop.Services;
 using Microsoft.EntityFrameworkCore;
 using MultiSych.Services.Data;
 
@@ -20,26 +19,26 @@ public class AutoSyncBackgroundService : BackgroundService
     private readonly ILogger _logger;
     private readonly ISyncSignalService _syncSignalService;
     private readonly RuntimeSyncSettings _runtimeSyncSettings;
-    private readonly IAppStatusService _appStatusService;
     private readonly HashSet<string> _notifiedEventIds = new();
     private readonly HashSet<string> _notifiedEmailIds = new();
+    private readonly INotificationService? _notificationService;
 
     public AutoSyncBackgroundService(
         IServiceScopeFactory scopeFactory, 
         ISyncSignalService syncSignalService, 
         RuntimeSyncSettings runtimeSyncSettings,
-        IAppStatusService appStatusService)
+        INotificationService? notificationService = null)
     {
         _scopeFactory = scopeFactory;
         _logger = Log.ForContext<AutoSyncBackgroundService>();
         _syncSignalService = syncSignalService;
         _runtimeSyncSettings = runtimeSyncSettings;
-        _appStatusService = appStatusService;
+        _notificationService = notificationService;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("AutoSync Background Service is starting.");
+        _logger.Information("AutoSync Background Service is starting.");
 
         // Etkinlik hatırlatıcılarını kontrol eden bağımsız paralel döngü
         _ = Task.Run(async () => await CheckRemindersAsync(stoppingToken), stoppingToken);
@@ -92,7 +91,6 @@ public class AutoSyncBackgroundService : BackgroundService
     private async Task PerformSyncAsync(CancellationToken cancellationToken)
     {
         _logger.Information("Starting automated sync cycle...");
-        _appStatusService.PostUpdate("Senkronizasyon başlıyor...", isSyncing: true);
 
         try
         {
@@ -133,21 +131,11 @@ public class AutoSyncBackgroundService : BackgroundService
             }
 
             _logger.Information("Automated sync cycle completed successfully.");
-            _appStatusService.PostUpdate("Senkronizasyon tamamlandı.", isSyncing: false);
 
-            var windowService = scope.ServiceProvider.GetService<IWindowService>();
-            if (windowService != null)
-            {
-                Avalonia.Threading.Dispatcher.UIThread.Post(() => 
-                {
-                    windowService.ShowNotification("Senkronizasyon", "Tüm hesaplar başarıyla güncellendi.", NotificationSound.Success);
-                });
-            }
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "An error occurred during the automated sync cycle.");
-            _appStatusService.PostUpdate($"Senkronizasyon hatası: {ex.Message}", isSyncing: false);
         }
     }
 
@@ -159,53 +147,45 @@ public class AutoSyncBackgroundService : BackgroundService
             {
                 using var scope = _scopeFactory.CreateScope();
                 var dbContext = scope.ServiceProvider.GetRequiredService<LocalCacheDbContext>();
-                var windowService = scope.ServiceProvider.GetService<IWindowService>();
 
-                if (windowService != null)
+                var now = DateTime.UtcNow;
+                var upcomingLimit = now.AddMinutes(15);
+                
+                var upcomingEvents = await dbContext.CachedEvents
+                    .Where(e => e.StartTime > now && e.StartTime <= upcomingLimit)
+                    .ToListAsync(stoppingToken);
+
+                foreach (var ev in upcomingEvents)
                 {
-                    var now = DateTime.UtcNow;
-                    var upcomingLimit = now.AddMinutes(15);
-                    
-                    var upcomingEvents = await dbContext.CachedEvents
-                        .Where(e => e.StartTime > now && e.StartTime <= upcomingLimit)
-                        .ToListAsync(stoppingToken);
-
-                    foreach (var ev in upcomingEvents)
+                    if (_notifiedEventIds.Add(ev.EventId)) // Add metodu, koleksiyonda yoksa ekler ve true döner
                     {
-                        if (_notifiedEventIds.Add(ev.EventId)) // Add metodu, koleksiyonda yoksa ekler ve true döner
-                        {
-                            var localTime = ev.StartTime.ToLocalTime();
-                            Avalonia.Threading.Dispatcher.UIThread.Post(() => 
-                            {
-                                windowService.ShowNotification("⏰ Yaklaşan Etkinlik", $"{ev.Title}\nZaman: {localTime:HH:mm}", NotificationSound.Event);
-                            });
-                        }
+                        var localTime = ev.StartTime.ToLocalTime();
+                        _logger.Information("🔔 HATIRLATMA: '{Title}' etkinliğine az kaldı! Zaman: {Time}", ev.Title, localTime);
+                        _notificationService?.ShowNotification("Yaklaşan Etkinlik", $"'{ev.Title}' etkinliğine az kaldı! ({localTime:HH:mm})", "Event");
                     }
-                    
-                    // Bellek sızıntısını önlemek için, süresi geçmiş etkinlik ID'lerini HashSet'ten temizliyoruz
-                    _notifiedEventIds.RemoveWhere(id => !upcomingEvents.Any(e => e.EventId == id));
-
-                    // --- Yeni E-Posta Bildirim Kontrolü ---
-                    var recentEmailLimit = now.AddDays(-1); // Yalnızca son 24 saat içindeki okunmamışları dikkate al
-                    var unreadEmails = await dbContext.CachedEmails
-                        .Where(e => !e.IsRead && e.ReceivedAt > recentEmailLimit)
-                        .ToListAsync(stoppingToken);
-
-                    foreach (var email in unreadEmails)
-                    {
-                        // Eşsiz bir ID oluşturarak aynı mailin tekrar bildirilmesini engelliyoruz
-                        var uniqueId = $"{email.AccountId}_{email.ReceivedAt.Ticks}";
-                        if (_notifiedEmailIds.Add(uniqueId))
-                        {
-                            Avalonia.Threading.Dispatcher.UIThread.Post(() => 
-                            {
-                                windowService.ShowNotification("📧 Yeni E-Posta", email.Subject ?? "Konusuz İleti", NotificationSound.Email);
-                            });
-                        }
-                    }
-                    
-                    _notifiedEmailIds.RemoveWhere(id => !unreadEmails.Any(e => $"{e.AccountId}_{e.ReceivedAt.Ticks}" == id));
                 }
+                
+                // Bellek sızıntısını önlemek için, süresi geçmiş etkinlik ID'lerini HashSet'ten temizliyoruz
+                _notifiedEventIds.RemoveWhere(id => !upcomingEvents.Any(e => e.EventId == id));
+
+                // --- Yeni E-Posta Bildirim Kontrolü ---
+                var recentEmailLimit = now.AddDays(-1); // Yalnızca son 24 saat içindeki okunmamışları dikkate al
+                var unreadEmails = await dbContext.CachedEmails
+                    .Where(e => !e.IsRead && e.ReceivedAt > recentEmailLimit)
+                    .ToListAsync(stoppingToken);
+
+                foreach (var email in unreadEmails)
+                {
+                    // Eşsiz bir ID oluşturarak aynı mailin tekrar bildirilmesini engelliyoruz
+                    var uniqueId = $"{email.AccountId}_{email.ReceivedAt.Ticks}";
+                    if (_notifiedEmailIds.Add(uniqueId))
+                    {
+                        _logger.Information("📧 YENİ E-POSTA: {Subject} (Hesap: {AccountId})", email.Subject, email.AccountId);
+                        _notificationService?.ShowNotification("Yeni E-Posta", $"{email.Subject}", "Email");
+                    }
+                }
+                
+                _notifiedEmailIds.RemoveWhere(id => !unreadEmails.Any(e => $"{e.AccountId}_{e.ReceivedAt.Ticks}" == id));
             }
             catch (Exception ex)
             {

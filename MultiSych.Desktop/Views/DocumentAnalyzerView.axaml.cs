@@ -1,10 +1,15 @@
 using System;
 using System.IO;
+using System.Linq;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
 using MultiSych.Desktop.ViewModels;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
+using iText.Kernel.Pdf;
+using iText.Kernel.Pdf.Canvas.Parser;
 
 namespace MultiSych.Desktop.Views;
 
@@ -13,6 +18,51 @@ public partial class DocumentAnalyzerView : UserControl
     public DocumentAnalyzerView()
     {
         InitializeComponent();
+        AddHandler(DragDrop.DropEvent, Drop);
+        AddHandler(DragDrop.DragOverEvent, DragOver);
+    }
+
+    private void DragOver(object? sender, DragEventArgs e)
+    {
+        // Sadece dosya sürüklemelerine izin ver (Metin veya URL reddedilir)
+        e.DragEffects = e.Data.Contains(DataFormats.Files) ? DragDropEffects.Copy : DragDropEffects.None;
+    }
+
+    private void Drop(object? sender, DragEventArgs e)
+    {
+        if (e.Data.Contains(DataFormats.Files))
+        {
+            var files = e.Data.GetFiles();
+            var firstFile = files?.FirstOrDefault()?.TryGetLocalPath();
+
+            // Sürüklenen dosya PDF ise metinlerini sayfalar halinde ayıkla
+            if (!string.IsNullOrEmpty(firstFile) && firstFile.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+            {
+                if (DataContext is DocumentAnalyzerViewModel vm)
+                {
+                    try
+                    {
+                        string extractedText = string.Empty;
+                        using var pdfReader = new PdfReader(firstFile);
+                        using var pdfDoc = new PdfDocument(pdfReader);
+                        
+                        for (int i = 1; i <= pdfDoc.GetNumberOfPages(); i++)
+                        {
+                            var page = pdfDoc.GetPage(i);
+                            extractedText += PdfTextExtractor.GetTextFromPage(page) + "\n\n";
+                        }
+
+                        // ViewModel içerisindeki giriş metnine çıkarılan metni bağla
+                        var propertyInfo = vm.GetType().GetProperty("DocumentText") ?? vm.GetType().GetProperty("Content");
+                        propertyInfo?.SetValue(vm, extractedText);
+                    }
+                    catch (Exception ex)
+                    {
+                        Serilog.Log.Error(ex, "PDF Drag&Drop okuma hatası (Dosya şifreli veya bozuk olabilir).");
+                    }
+                }
+            }
+        }
     }
 
     private async void ExportToPdf_Click(object? sender, RoutedEventArgs e)
@@ -82,10 +132,7 @@ public partial class DocumentAnalyzerView : UserControl
                         var settingsPart = mainPart.AddNewPart<DocumentSettingsPart>();
                         settingsPart.Settings = new DocumentFormat.OpenXml.Wordprocessing.Settings();
                         settingsPart.Settings.AppendChild(new DocumentFormat.OpenXml.Wordprocessing.DocumentProtection
-                        {
-                            Edit = DocumentFormat.OpenXml.Wordprocessing.DocumentProtectionValues.ReadOnly,
-                            Enforcement = DocumentFormat.OpenXml.Wordprocessing.OnOffValue.FromBoolean(true)
-                        });
+                        { Edit = DocumentFormat.OpenXml.Wordprocessing.DocumentProtectionValues.ReadOnly, Enforcement = true });
                     }
 
                     var titlePara = body.AppendChild(new DocumentFormat.OpenXml.Wordprocessing.Paragraph());

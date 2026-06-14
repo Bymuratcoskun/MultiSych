@@ -1,7 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:MultiSych.Desktop.ViewModels"
-             xmlns:entities="using:MultiSych.Services.Data.Entities"
+             xmlns:models="using:MultiSych.Services.Models"
+             xmlns:data="using:MultiSych.Services.Data"
              x:Class="MultiSych.Desktop.Views.FileExplorerView"
              x:DataType="vm:FileExplorerViewModel">
     <Grid RowDefinitions="Auto, Auto, *" Margin="20" DragDrop.AllowDrop="True">
@@ -21,7 +22,7 @@
             <DataGrid.Columns>
                 <DataGridTemplateColumn Header="Tür" Width="60">
                     <DataGridTemplateColumn.CellTemplate>
-                        <DataTemplate x:DataType="entities:CloudFileEntity">
+                        <DataTemplate x:DataType="data:CloudFileEntity">
                             <Panel>
                                 <TextBlock Text="📁" IsVisible="{Binding IsDirectory}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 <TextBlock Text="📄" IsVisible="{Binding !IsDirectory}" HorizontalAlignment="Center" VerticalAlignment="Center"/>

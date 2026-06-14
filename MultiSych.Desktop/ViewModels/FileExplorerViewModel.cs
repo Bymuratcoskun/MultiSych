@@ -8,7 +8,7 @@ using Avalonia.Threading;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using MultiSych.Services.Data;
-using MultiSych.Services.Data.Entities;
+using MultiSych.Services.Models;
 using MultiSych.Services.Interfaces;
 
 namespace MultiSych.Desktop.ViewModels;
@@ -21,8 +21,8 @@ public class FileExplorerViewModel : ViewModelBase
     private string? _selectedAccountId;
     private bool _isLoading;
 
-    public ObservableCollection<CloudFileEntity> Files { get; } = new();
-    public ObservableCollection<Services.Models.AccountCredentials> Accounts { get; } = new();
+    public ObservableCollection<CloudFileEntity> Files { get; } = [];
+    public ObservableCollection<AccountCredentials> Accounts { get; } = [];
 
     public FileExplorerViewModel(IServiceScopeFactory scopeFactory, IAccountStore accountStore)
     {
@@ -114,13 +114,13 @@ public class FileExplorerViewModel : ViewModelBase
     {
         if (CurrentPath == "/") return;
         var lastSlash = CurrentPath.LastIndexOf('/');
-        CurrentPath = lastSlash <= 0 ? "/" : CurrentPath.Substring(0, lastSlash);
+        CurrentPath = lastSlash <= 0 ? "/" : CurrentPath[..lastSlash];
         await LoadFilesAsync();
     }
 
     private async Task UploadFilesAsync(List<string>? filePaths)
     {
-        if (filePaths == null || !filePaths.Any() || string.IsNullOrEmpty(SelectedAccountId)) return;
+        if (filePaths == null || filePaths.Count == 0 || string.IsNullOrEmpty(SelectedAccountId)) return;
 
         IsLoading = true;
         try
@@ -145,7 +145,43 @@ public class FileExplorerViewModel : ViewModelBase
             {
                 if (string.IsNullOrEmpty(path)) continue;
                 appStatusService.PostUpdate($"Yükleniyor: {System.IO.Path.GetFileName(path)}", true);
-                await storageService.UploadFileAsync(account, path, folderId);
+                var newFileId = await storageService.UploadFileAsync(account, path, folderId);
+                
+                // Anında yerel veritabanına ekle (Dokan sürücüsünde anında görünmesi için)
+                var fileInfo = new System.IO.FileInfo(path);
+                var filePathStr = CurrentPath == "/" ? $"/{fileInfo.Name}" : $"{CurrentPath}/{fileInfo.Name}";
+                
+                var existing = await dbContext.CloudFiles.FirstOrDefaultAsync(f => f.AccountId == SelectedAccountId && f.Path == filePathStr);
+                if (existing == null)
+                {
+                    dbContext.CloudFiles.Add(new CloudFileEntity
+                    {
+                        AccountId = SelectedAccountId!,
+                        FileId = newFileId,
+                        FileName = fileInfo.Name,
+                        MimeType = "application/octet-stream",
+                        FileSize = fileInfo.Length,
+                        IsDirectory = false,
+                        Provider = account.Provider ?? string.Empty,
+                        Path = filePathStr,
+                        ParentId = folderId == "root" ? null : folderId,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    });
+                    await dbContext.SaveChangesAsync();
+                }
+
+                // Dosyayı yerel uygulama önbelleğine (Cache) kopyalayarak çevrimdışı erişilebilir yapıyoruz
+                try 
+                {
+                    var localCachePath = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MultiSych", "Drives", SelectedAccountId ?? string.Empty);
+                    var targetPath = System.IO.Path.Combine(localCachePath, filePathStr.TrimStart('/'));
+                    var dirName = System.IO.Path.GetDirectoryName(targetPath);
+                    if (!string.IsNullOrEmpty(dirName))
+                        System.IO.Directory.CreateDirectory(dirName);
+                    System.IO.File.Copy(path, targetPath, true);
+                } 
+                catch { /* Önemsiz önbellekleme hatalarını yoksay */ }
             }
 
             appStatusService.PostUpdate("Yükleme tamamlandı. Liste güncelleniyor...", true);

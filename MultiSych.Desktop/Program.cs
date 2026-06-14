@@ -27,16 +27,20 @@ namespace MultiSych.Desktop;
 
 internal static class Program
 {
+    private static readonly string[] _environmentFiles = ["multisych-security.env", ".env"];
+
     public static IServiceProvider ServiceProvider { get; private set; } = null!;
 
     public static int Main(string[] args)
     {
         // Squirrel.Windows'un kurulum, güncelleme ve kaldırma olaylarını yönetir.
         // Bu, uygulamanın kısayollarını oluşturmak/kaldırmak için gereklidir.
+#pragma warning disable CA1416
         SquirrelAwareApp.HandleEvents(
             onInitialInstall: OnAppInstall,
             onAppUpdate: OnAppUpdate,
             onAppUninstall: OnAppUninstall);
+#pragma warning restore CA1416
 
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Information()
@@ -47,7 +51,7 @@ internal static class Program
         try
         {
             Log.Information("MultiSych Desktop Application Starting...");
-            SecurityHelper.LoadEnvironmentFiles(new[] { "multisych-security.env", ".env" });
+            SecurityHelper.LoadEnvironmentFiles(_environmentFiles);
 
             if (args.Length >= 3 && args[0] == "--set-ai-key")
             {
@@ -169,6 +173,7 @@ internal static class Program
             .UseReactiveUI()
             .LogToTrace();
 
+#pragma warning disable CA1416
     private static void OnAppInstall(SemanticVersion version, IAppTools tools)
     {
         tools.CreateShortcutForThisExe(ShortcutLocation.StartMenu | ShortcutLocation.Desktop);
@@ -247,11 +252,8 @@ internal static class Program
                 // 3. EF Core Migrations (Tablo oluşturma) terminal araçlarının veritabanını bulabilmesi için standart DbContext
                 services.AddDbContext<LocalCacheDbContext>(options => options.UseSqlite(connectionString));
                 services.AddSingleton<IAccountStore, AccountStoreService>();
-                // Google, Microsoft ve Yandex kimlik doğrulama işlemlerini tek bir merkezde topladık.
-                services.AddSingleton<IAuthenticationService, AuthenticationService>();
                 services.AddSingleton<IPlatformMountProvider, PlatformMountProvider>();
                 services.AddSingleton<IVirtualDriveService, VirtualDriveService>();
-                services.AddSingleton<IEmailService, CloudEmailService>();
                 
                 // Ayarların yeniden başlatma olmadan (Hot Reload) uygulanmasını sağlayan anlık durum servisi.
                 services.AddSingleton(sp =>
@@ -263,8 +265,6 @@ internal static class Program
                     };
                 });
 
-                services.AddSingleton<ICalendarService, CloudCalendarService>();
-                services.AddSingleton<IStorageService, CloudStorageService>();
                 services.AddSingleton<ISecureStorageService, SecureStorageService>();
                 services.AddSingleton<ISpeechService, WhisperSpeechService>();
                 services.AddSingleton<IAudioRecordingService, NAudioRecordingService>();
@@ -298,12 +298,12 @@ internal static class Program
             return false;
 
         var command = args[0].ToLowerInvariant();
-        var authService = services.GetService(typeof(IAuthenticationService)) as IAuthenticationService;
-        var accountStore = services.GetService(typeof(IAccountStore)) as IAccountStore;
-        var emailService = services.GetService(typeof(IEmailService)) as IEmailService;
-        var calendarService = services.GetService(typeof(ICalendarService)) as ICalendarService;
-        var storageService = services.GetService(typeof(IStorageService)) as IStorageService;
-        var aiService = services.GetService(typeof(IAIService)) as IAIService;
+        var authService = services.GetService<IAuthenticationService>();
+        var accountStore = services.GetService<IAccountStore>();
+        var emailService = services.GetService<IEmailService>();
+        var calendarService = services.GetService<ICalendarService>();
+        var storageService = services.GetService<IStorageService>();
+        var aiService = services.GetService<IAIService>();
 
         static void PrintHelp()
         {
@@ -441,7 +441,7 @@ internal static class Program
                         if (string.IsNullOrWhiteSpace(input) || input.Equals("exit", StringComparison.OrdinalIgnoreCase))
                             break;
 
-                        var response = await aiService.SendMessageAsync(input, new List<string>(), config.AI?.DefaultProvider ?? "hybrid");
+                        var response = await aiService.SendMessageAsync(input, [], config.AI?.DefaultProvider ?? "hybrid");
                         Console.WriteLine(response);
                     }
                     return true;

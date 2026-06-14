@@ -1,0 +1,11 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vlc="clr-namespace:LibVLCSharp.Avalonia;assembly=LibVLCSharp.Avalonia"
+        x:Class="MultiSych.Desktop.Views.MediaPlayerWindow"
+        Title="MultiSych Media Player" Width="800" Height="600"
+        WindowStartupLocation="CenterOwner" Background="Black">
+    <Grid>
+        <!-- VLC Video Oynatıcı Bileşeni -->
+        <vlc:VideoView x:Name="VideoView" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+    </Grid>
+</Window>

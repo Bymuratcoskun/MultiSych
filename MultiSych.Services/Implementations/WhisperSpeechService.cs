@@ -6,6 +6,7 @@ using MultiSych.Services.Interfaces;
 using Serilog;
 using Whisper.net;
 using Whisper.net.Ggml;
+using ReactiveUI;
 
 namespace MultiSych.Services.Implementations
 {
@@ -13,6 +14,15 @@ namespace MultiSych.Services.Implementations
     {
         private WhisperProcessor? _processor;
         private readonly ILogger _logger = Log.ForContext<WhisperSpeechService>();
+
+        private readonly IIntentParserService _intentParserService;
+        private readonly ISyncSignalService _syncSignalService;
+
+        public WhisperSpeechService(IIntentParserService intentParserService, ISyncSignalService syncSignalService)
+        {
+            _intentParserService = intentParserService;
+            _syncSignalService = syncSignalService;
+        }
 
 #pragma warning disable CA1416
         private System.Speech.Synthesis.SpeechSynthesizer? _synthesizer;
@@ -72,7 +82,29 @@ namespace MultiSych.Services.Implementations
                 resultText += result.Text + " ";
             }
             
-            return resultText.Trim();
+            resultText = resultText.Trim();
+
+            var intent = await _intentParserService.ParseIntentAsync(resultText);
+            if (intent == "Sync")
+            {
+                _logger.Information("Sesli komut algılandı: 'Sync'. Arka plan senkronizasyonu tetikleniyor.");
+                _syncSignalService.TriggerSync();
+                MessageBus.Current.SendMessage("Arka plan senkronizasyonu başlatıldı.", "NotificationIntent");
+            }
+            else if (intent == "Summarize")
+            {
+                _logger.Information("Sesli komut algılandı: 'Summarize'. Analiz ekranına geçiliyor.");
+                MessageBus.Current.SendMessage("Analyzer", "NavigationIntent");
+                MessageBus.Current.SendMessage("Belge analiz ekranı açıldı.", "NotificationIntent");
+            }
+            else if (intent == "Calendar")
+            {
+                _logger.Information("Sesli komut algılandı: 'Calendar'. Takvim ekranına geçiliyor.");
+                MessageBus.Current.SendMessage("Calendar", "NavigationIntent");
+                MessageBus.Current.SendMessage("Takvim sekmesine geçildi.", "NotificationIntent");
+            }
+
+            return resultText;
         }
 
         public Task SpeakAsync(string text)

@@ -26,7 +26,6 @@ public class CloudVirtualFileSystem : IDokanOperations
     private class FileContext
     {
         public string FileId { get; set; } = string.Empty;
-        public Stream? DataStream { get; set; }
         public string? LocalTempPath { get; set; }
         public bool IsModified { get; set; }
     }
@@ -36,6 +35,27 @@ public class CloudVirtualFileSystem : IDokanOperations
         _accountId = accountId;
         _storageService = storageService;
         _dbContextFactory = dbContextFactory;
+    }
+
+    public void Mount(string mountPoint, DokanOptions dokanOptions)
+    {
+        try
+        {
+            using var dokan = new Dokan(null);
+            var builder = new DokanInstanceBuilder(dokan)
+                .ConfigureOptions(options =>
+                {
+                    options.Options = dokanOptions;
+                    options.MountPoint = mountPoint;
+                });
+            using var dokanInstance = builder.Build(this);
+            dokanInstance.WaitForFileSystemClosed(uint.MaxValue);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Dokan mount failed for {MountPoint}", mountPoint);
+            throw;
+        }
     }
 
     public NtStatus CreateFile(string fileName, DokanNet.FileAccess access, FileShare share, FileMode mode, FileOptions options, FileAttributes attributes, IDokanFileInfo info)
@@ -54,7 +74,7 @@ public class CloudVirtualFileSystem : IDokanOperations
         {
             if (mode == FileMode.CreateNew || mode == FileMode.Create || mode == FileMode.OpenOrCreate)
             {
-                var newFile = new Data.Entities.CloudFileEntity
+                var newFile = new CloudFileEntity
                 {
                     AccountId = _accountId,
                     FileId = "temp_" + Guid.NewGuid().ToString("N"),
@@ -146,7 +166,7 @@ public class CloudVirtualFileSystem : IDokanOperations
         {
             // Find the directory we are listing to get its FileId
             var parentDir = dbContext.CloudFiles.FirstOrDefault(f => f.AccountId == _accountId && f.Path == path && f.IsDirectory);
-            if (parentDir == null) return DokanResult.DirectoryNotFound;
+            if (parentDir == null) return DokanResult.FileNotFound;
             parentId = parentDir.FileId;
         }
 
@@ -178,8 +198,8 @@ public class CloudVirtualFileSystem : IDokanOperations
 
         try
         {
-            // Eğer stream (akış) henüz çekilmediyse On-Demand olarak (anlık) indiriyoruz.
-            if (ctx.DataStream == null)
+            // Eğer dosya henüz geçici (Temp) diske indirilmediyse indiriyoruz.
+            if (string.IsNullOrEmpty(ctx.LocalTempPath) || !File.Exists(ctx.LocalTempPath))
             {
                 using var dbContext = _dbContextFactory.CreateDbContext();
                 var accountEntity = dbContext.Accounts.FirstOrDefault(a => a.AccountId == _accountId);
@@ -193,14 +213,20 @@ public class CloudVirtualFileSystem : IDokanOperations
 
                 _logger.Information("On-Demand Download triggered for file {FileName}", fileName);
                 
-                // Senkron bir yapı (Dokan) içerisinde asenkron stream çağırma
-                ctx.DataStream = _storageService.DownloadFileAsync(credentials, ctx.FileId).GetAwaiter().GetResult();
+                // RAM'in şişmesini önlemek (Video/Büyük Dosya) için belleğe değil, geçici bir diske (Temp) spool ediyoruz
+                var cloudStream = _storageService.DownloadFileAsync(credentials, ctx.FileId).GetAwaiter().GetResult();
+                
+                ctx.LocalTempPath = Path.GetTempFileName();
+                using var tempWriter = new FileStream(ctx.LocalTempPath, FileMode.Create, System.IO.FileAccess.Write, System.IO.FileShare.None);
+                cloudStream.CopyTo(tempWriter);
             }
 
-            if (ctx.DataStream.CanSeek)
-                ctx.DataStream.Position = offset;
-            
-            bytesRead = ctx.DataStream.Read(buffer, 0, buffer.Length);
+            // Her read işleminde dosyayı kilitlenmeyecek şekilde açıp kapatıyoruz (Disposable)
+            using (var fs = new FileStream(ctx.LocalTempPath, FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.ReadWrite))
+            {
+                if (fs.CanSeek) fs.Position = offset;
+                bytesRead = fs.Read(buffer, 0, buffer.Length);
+            }
             return DokanResult.Success;
         }
         catch (Exception ex)
@@ -229,8 +255,11 @@ public class CloudVirtualFileSystem : IDokanOperations
     {
         if (info.Context is FileContext ctx)
         {
-            ctx.DataStream?.Dispose(); // İşletim sistemi dosyayı okumayı bitirince RAM'i boşalt
-            ctx.DataStream = null;
+            // Dosya yalnızca okunduysa (Download) ve diske önbelleklendiyse, diski doldurmaması için Temp dosyasını sil
+            if (!ctx.IsModified && !string.IsNullOrEmpty(ctx.LocalTempPath) && File.Exists(ctx.LocalTempPath))
+            {
+                try { File.Delete(ctx.LocalTempPath); } catch { }
+            }
         }
     }
 
@@ -258,24 +287,38 @@ public class CloudVirtualFileSystem : IDokanOperations
             // İşletim sistemini bekletmemek için buluttan silme (veya çöpe taşıma) işlemini arka plana atıyoruz
             Task.Run(async () => 
             {
-                try
-                {
-                    using var bgDbContext = _dbContextFactory.CreateDbContext();
-                    var accountEntity = bgDbContext.Accounts.FirstOrDefault(a => a.AccountId == _accountId);
-                    if (accountEntity == null) return;
-                    
-                    var credentials = new AccountCredentials 
-                    {
-                        AccountId = accountEntity.AccountId, Email = accountEntity.Email, Provider = accountEntity.Provider,
-                        AccessToken = accountEntity.AccessToken, RefreshToken = accountEntity.RefreshToken, ExpiresAt = accountEntity.ExpiresAt
-                    };
+                int maxRetries = 3;
+                int delayMs = 2000;
 
-                    await _storageService.DeleteFileAsync(credentials, fileId);
-                    _logger.Information("Successfully deleted file {FileName} from cloud.", fileName);
-                }
-                catch (Exception ex)
+                for (int attempt = 1; attempt <= maxRetries; attempt++)
                 {
-                    _logger.Error(ex, "Failed to delete file {FileName} from cloud.", fileName);
+                    try
+                    {
+                        using var bgDbContext = _dbContextFactory.CreateDbContext();
+                        var accountEntity = bgDbContext.Accounts.FirstOrDefault(a => a.AccountId == _accountId);
+                        if (accountEntity == null) return;
+                        
+                        var credentials = new AccountCredentials 
+                        {
+                            AccountId = accountEntity.AccountId, Email = accountEntity.Email, Provider = accountEntity.Provider,
+                            AccessToken = accountEntity.AccessToken, RefreshToken = accountEntity.RefreshToken, ExpiresAt = accountEntity.ExpiresAt
+                        };
+
+                        await _storageService.DeleteFileAsync(credentials, fileId);
+                        _logger.Information("Successfully deleted file {FileName} from cloud on attempt {Attempt}.", fileName, attempt);
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        if (attempt == maxRetries)
+                            _logger.Error(ex, "Failed to delete file {FileName} from cloud after {MaxRetries} attempts.", fileName, maxRetries);
+                        else
+                        {
+                            _logger.Warning(ex, "Attempt {Attempt} failed to delete file {FileName} from cloud. Retrying in {Delay}ms...", attempt, fileName, delayMs);
+                            await Task.Delay(delayMs);
+                            delayMs *= 2; // Exponential Backoff
+                        }
+                    }
                 }
             });
 
@@ -291,7 +334,7 @@ public class CloudVirtualFileSystem : IDokanOperations
         using var dbContext = _dbContextFactory.CreateDbContext();
         var dirEntity = dbContext.CloudFiles.FirstOrDefault(f => f.AccountId == _accountId && f.Path == path);
 
-        if (dirEntity == null) return DokanResult.DirectoryNotFound;
+        if (dirEntity == null) return DokanResult.FileNotFound;
         if (!dirEntity.IsDirectory) return DokanResult.NotADirectory;
 
         // Check if directory is empty
@@ -307,24 +350,38 @@ public class CloudVirtualFileSystem : IDokanOperations
             // Background task to delete from cloud
             Task.Run(async () =>
             {
-                try
-                {
-                    using var bgDbContext = _dbContextFactory.CreateDbContext();
-                    var accountEntity = bgDbContext.Accounts.FirstOrDefault(a => a.AccountId == _accountId);
-                    if (accountEntity == null) return;
+                int maxRetries = 3;
+                int delayMs = 2000;
 
-                    var credentials = new AccountCredentials
+                for (int attempt = 1; attempt <= maxRetries; attempt++)
+                {
+                    try
                     {
-                        AccountId = accountEntity.AccountId, Email = accountEntity.Email, Provider = accountEntity.Provider,
-                        AccessToken = accountEntity.AccessToken, RefreshToken = accountEntity.RefreshToken, ExpiresAt = accountEntity.ExpiresAt
-                    };
+                        using var bgDbContext = _dbContextFactory.CreateDbContext();
+                        var accountEntity = bgDbContext.Accounts.FirstOrDefault(a => a.AccountId == _accountId);
+                        if (accountEntity == null) return;
 
-                    await _storageService.DeleteFileAsync(credentials, fileId);
-                    _logger.Information("Successfully deleted directory {FileName} from cloud.", fileName);
-                }
-                catch (Exception ex)
-                {
-                    _logger.Error(ex, "Failed to delete directory {FileName} from cloud.", fileName);
+                        var credentials = new AccountCredentials
+                        {
+                            AccountId = accountEntity.AccountId, Email = accountEntity.Email, Provider = accountEntity.Provider,
+                            AccessToken = accountEntity.AccessToken, RefreshToken = accountEntity.RefreshToken, ExpiresAt = accountEntity.ExpiresAt
+                        };
+
+                        await _storageService.DeleteFileAsync(credentials, fileId);
+                        _logger.Information("Successfully deleted directory {FileName} from cloud on attempt {Attempt}.", fileName, attempt);
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        if (attempt == maxRetries)
+                            _logger.Error(ex, "Failed to delete directory {FileName} from cloud after {MaxRetries} attempts.", fileName, maxRetries);
+                        else
+                        {
+                            _logger.Warning(ex, "Attempt {Attempt} failed to delete directory {FileName} from cloud. Retrying in {Delay}ms...", attempt, fileName, delayMs);
+                            await Task.Delay(delayMs);
+                            delayMs *= 2; // Exponential Backoff
+                        }
+                    }
                 }
             });
 
@@ -361,7 +418,7 @@ public class CloudVirtualFileSystem : IDokanOperations
             if (string.IsNullOrEmpty(newParentPath) || newParentPath == "\\") newParentPath = "/";
 
             var newParentEntity = dbContext.CloudFiles.FirstOrDefault(f => f.AccountId == _accountId && f.Path == newParentPath);
-            if (newParentPath != "/" && newParentEntity == null) return DokanResult.DirectoryNotFound;
+            if (newParentPath != "/" && newParentEntity == null) return DokanResult.FileNotFound;
             
             sourceEntity.Path = newPath;
             sourceEntity.FileName = newFileName;
@@ -381,29 +438,44 @@ public class CloudVirtualFileSystem : IDokanOperations
             dbContext.SaveChanges();
             _logger.Information("File {OldName} moved to {NewName} locally. Triggering cloud move operation.", oldName, newName);
 
-            // Arka planda bulut taşıma/yeniden adlandırma işlemini tetikle
+            // Arka planda bulut taşıma/yeniden adlandırma işlemini tetikle (Retry Mekanizmalı)
             Task.Run(async () =>
             {
-                try
-                {
-                    using var bgDbContext = _dbContextFactory.CreateDbContext();
-                    var accountEntity = bgDbContext.Accounts.FirstOrDefault(a => a.AccountId == _accountId);
-                    if (accountEntity == null) return;
+                int maxRetries = 3;
+                int delayMs = 2000;
 
-                    var credentials = new AccountCredentials 
+                for (int attempt = 1; attempt <= maxRetries; attempt++)
+                {
+                    try
                     {
-                        AccountId = accountEntity.AccountId, Email = accountEntity.Email, Provider = accountEntity.Provider,
-                        AccessToken = accountEntity.AccessToken, RefreshToken = accountEntity.RefreshToken, ExpiresAt = accountEntity.ExpiresAt
-                    };
+                        using var bgDbContext = _dbContextFactory.CreateDbContext();
+                        var accountEntity = bgDbContext.Accounts.FirstOrDefault(a => a.AccountId == _accountId);
+                        if (accountEntity == null) return;
 
-                    // newParentEntity.FileId, root için null olabilir. Servis "root" anahtar kelimesini yönetmelidir.
-                    var newParentCloudId = newParentEntity?.FileId ?? "root";
-                    await _storageService.MoveFileAsync(credentials, sourceEntity.FileId, newParentCloudId, newFileName);
-                    _logger.Information("Successfully moved file {OldName} to {NewName} in the cloud.", oldName, newName);
-                }
-                catch (Exception ex)
-                {
-                    _logger.Error(ex, "Failed to move file {OldName} to {NewName} in the cloud.", oldName, newName);
+                        var credentials = new AccountCredentials 
+                        {
+                            AccountId = accountEntity.AccountId, Email = accountEntity.Email, Provider = accountEntity.Provider,
+                            AccessToken = accountEntity.AccessToken, RefreshToken = accountEntity.RefreshToken, ExpiresAt = accountEntity.ExpiresAt
+                        };
+
+                        // newParentEntity.FileId, root için null olabilir. Servis "root" anahtar kelimesini yönetmelidir.
+                        var newParentCloudId = newParentEntity?.FileId ?? "root";
+                        await _storageService.MoveFileAsync(credentials, sourceEntity.FileId, newParentCloudId, newFileName);
+                        
+                        _logger.Information("Successfully moved file {OldName} to {NewName} in the cloud on attempt {Attempt}.", oldName, newName, attempt);
+                        break; // Başarılı olursa döngüden çık
+                    }
+                    catch (Exception ex)
+                    {
+                        if (attempt == maxRetries)
+                            _logger.Error(ex, "Failed to move file {OldName} to {NewName} in the cloud after {MaxRetries} attempts.", oldName, newName, maxRetries);
+                        else
+                        {
+                            _logger.Warning(ex, "Attempt {Attempt} failed to move file {OldName} in the cloud. Retrying in {Delay}ms...", attempt, oldName, delayMs);
+                            await Task.Delay(delayMs);
+                            delayMs *= 2; // Exponential Backoff (Kademeli Gecikme: 2sn, 4sn, 8sn)
+                        }
+                    }
                 }
             });
 
@@ -434,16 +506,17 @@ public class CloudVirtualFileSystem : IDokanOperations
         try
         {
             // Düzenleme işlemi için diske geçici bir stream oluşturuyoruz.
-            if (ctx.DataStream == null || !ctx.DataStream.CanWrite)
+            if (string.IsNullOrEmpty(ctx.LocalTempPath))
             {
                 ctx.LocalTempPath = Path.GetTempFileName();
-                ctx.DataStream = new FileStream(ctx.LocalTempPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
-                ctx.IsModified = true;
             }
 
-            ctx.DataStream.Position = offset;
-            ctx.DataStream.Write(buffer, 0, buffer.Length);
-            bytesWritten = buffer.Length;
+            using (var fs = new FileStream(ctx.LocalTempPath, FileMode.OpenOrCreate, System.IO.FileAccess.Write, System.IO.FileShare.ReadWrite))
+            {
+                fs.Position = offset;
+                fs.Write(buffer, 0, buffer.Length);
+                bytesWritten = buffer.Length;
+            }
             ctx.IsModified = true;
             return DokanResult.Success;
         }
@@ -482,9 +555,9 @@ public class CloudVirtualFileSystem : IDokanOperations
         return DokanResult.NotImplemented;
     }
 
-    public NtStatus Mounted(IDokanFileInfo info)
+    public NtStatus Mounted(string mountPoint, IDokanFileInfo info)
     {
-        _logger.Information("Dokan volume mounted");
+        _logger.Information("Dokan volume mounted at {mountPoint}", mountPoint);
         return DokanResult.Success;
     }
 
@@ -503,5 +576,18 @@ public class CloudVirtualFileSystem : IDokanOperations
     public NtStatus LockFile(string fileName, long offset, long length, IDokanFileInfo info)
     {
         return DokanResult.Success;
+    }
+
+    private string? GetParentIdFromPath(string path)
+    {
+        var directoryPath = Path.GetDirectoryName(path)?.Replace('\\', '/');
+        if (string.IsNullOrEmpty(directoryPath) || directoryPath == "/")
+        {
+            return null;
+        }
+
+        using var dbContext = _dbContextFactory.CreateDbContext();
+        var parent = dbContext.CloudFiles.FirstOrDefault(f => f.AccountId == _accountId && f.Path == directoryPath && f.IsDirectory);
+        return parent?.FileId;
     }
 }
