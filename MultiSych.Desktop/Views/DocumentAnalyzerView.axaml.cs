@@ -25,14 +25,14 @@ public partial class DocumentAnalyzerView : UserControl
     private void DragOver(object? sender, DragEventArgs e)
     {
         // Sadece dosya sürüklemelerine izin ver (Metin veya URL reddedilir)
-        e.DragEffects = e.Data.Contains(DataFormats.Files) ? DragDropEffects.Copy : DragDropEffects.None;
+        e.DragEffects = e.DataTransfer.TryGetFiles() is not null ? DragDropEffects.Copy : DragDropEffects.None;
     }
 
     private void Drop(object? sender, DragEventArgs e)
     {
-        if (e.Data.Contains(DataFormats.Files))
+        var files = e.DataTransfer.TryGetFiles();
+        if (files is not null)
         {
-            var files = e.Data.GetFiles();
             var firstFile = files?.FirstOrDefault()?.TryGetLocalPath();
 
             // Sürüklenen dosya PDF ise metinlerini sayfalar halinde ayıkla
@@ -52,9 +52,8 @@ public partial class DocumentAnalyzerView : UserControl
                             extractedText += PdfTextExtractor.GetTextFromPage(page) + "\n\n";
                         }
 
-                        // ViewModel içerisindeki giriş metnine çıkarılan metni bağla
-                        var propertyInfo = vm.GetType().GetProperty("DocumentText") ?? vm.GetType().GetProperty("Content");
-                        propertyInfo?.SetValue(vm, extractedText);
+                        // Reflection yerine güçlü tip kullanımı trim uyumluluğunu korur.
+                        vm.DocumentContent = extractedText;
                     }
                     catch (Exception ex)
                     {

@@ -8,18 +8,7 @@
         WindowStartupLocation="CenterScreen"
         Closing="Window_Closing">
 
-    <Window.Styles>
-        <!-- Temalar arası geçişi yumuşatmak için global BrushTransition -->
-        <Style Selector="Border, Grid, StackPanel, TextBlock, Button, Window, UserControl, TextBox, ComboBox">
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Background" Duration="0:0:0.35" Easing="CubicEaseInOut"/>
-                    <BrushTransition Property="Foreground" Duration="0:0:0.35" Easing="CubicEaseInOut"/>
-                    <BrushTransition Property="BorderBrush" Duration="0:0:0.35" Easing="CubicEaseInOut"/>
-                </Transitions>
-            </Setter>
-        </Style>
-    </Window.Styles>
+    <!-- Tema transitions ViewModel'de sağlanacak -->
 
     <Grid ColumnDefinitions="260, *">
         
@@ -36,7 +25,7 @@
                 <ItemsControl Grid.Row="1" ItemsSource="{Binding NavigationItems}" Margin="10,0">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:NavigationItem">
-                            <Button Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).NavigateCommand}"
+                                <Button Command="{Binding DataContext.NavigateCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                     CommandParameter="{Binding Section}"
                                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                     Background="Transparent" BorderThickness="0"

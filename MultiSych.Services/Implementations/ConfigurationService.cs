@@ -7,7 +7,7 @@ using MultiSych.Services.Interfaces;
 
 namespace MultiSych.Services.Implementations;
 
-public class ConfigurationService : IConfigurationService
+public partial class ConfigurationService : IConfigurationService
 {
     private static readonly string EnvPath = Path.Combine(Directory.GetCurrentDirectory(), ".env");
     private static readonly SemaphoreSlim FileLock = new(1, 1);
@@ -39,5 +39,63 @@ public class ConfigurationService : IConfigurationService
         {
             FileLock.Release();
         }
+    }
+}
+public partial class ConfigurationService : IConfigurationServiceExtended
+{
+    public string GetString(string key, string defaultValue = "")
+    {
+        var envPath = Path.Combine(Directory.GetCurrentDirectory(), ".env");
+        if (!File.Exists(envPath))
+            return defaultValue;
+
+        try
+        {
+            var lines = File.ReadAllLines(envPath);
+            var line = lines.FirstOrDefault(l => l.StartsWith(key + "="));
+            if (line == null)
+                return defaultValue;
+
+            var parts = line.Split('=', 2);
+            return parts.Length == 2 ? parts[1] : defaultValue;
+        }
+        catch
+        {
+            return defaultValue;
+        }
+    }
+
+    public async Task<string> GetStringAsync(string key, string defaultValue = "")
+    {
+        var envPath = Path.Combine(Directory.GetCurrentDirectory(), ".env");
+        if (!File.Exists(envPath))
+            return defaultValue;
+
+        try
+        {
+            var lines = await File.ReadAllLinesAsync(envPath);
+            var line = lines.FirstOrDefault(l => l.StartsWith(key + "="));
+            if (line == null)
+                return defaultValue;
+
+            var parts = line.Split('=', 2);
+            return parts.Length == 2 ? parts[1] : defaultValue;
+        }
+        catch
+        {
+            return defaultValue;
+        }
+    }
+
+    public int GetInt(string key, int defaultValue = 0)
+    {
+        var stringValue = GetString(key);
+        return int.TryParse(stringValue, out var result) ? result : defaultValue;
+    }
+
+    public bool GetBool(string key, bool defaultValue = false)
+    {
+        var stringValue = GetString(key);
+        return bool.TryParse(stringValue, out var result) ? result : defaultValue;
     }
 }

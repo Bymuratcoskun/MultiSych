@@ -187,12 +187,25 @@ public class AutoSyncBackgroundService : BackgroundService
                 
                 _notifiedEmailIds.RemoveWhere(id => !unreadEmails.Any(e => $"{e.AccountId}_{e.ReceivedAt.Ticks}" == id));
             }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                // Uygulama kapanırken iptal edilmesi beklenen durumdur.
+                break;
+            }
             catch (Exception ex)
             {
                 _logger.Error(ex, "Error checking event reminders.");
             }
 
-            await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken); // Hatırlatıcıları her 1 dakikada bir kontrol et
+            try
+            {
+                // Hatırlatıcıları her 1 dakikada bir kontrol et
+                await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
         }
     }
 }

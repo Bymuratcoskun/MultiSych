@@ -200,4 +200,5 @@ public partial class MainWindow : Window
         _reallyExit = true;
         this.Close();
     }
+}
 

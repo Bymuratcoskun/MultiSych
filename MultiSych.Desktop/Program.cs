@@ -249,11 +249,16 @@ internal static class Program
                 services.AddSingleton(config);
                 // 2. Uygulama arka plan görevleri (performans) için Factory
                 services.AddDbContextFactory<LocalCacheDbContext>(options => options.UseSqlite(connectionString));
-                // 3. EF Core Migrations (Tablo oluşturma) terminal araçlarının veritabanını bulabilmesi için standart DbContext
-                services.AddDbContext<LocalCacheDbContext>(options => options.UseSqlite(connectionString));
+                // 3. EF Core Migrations (Tablo oluşturma) terminal araçlarının veritabanını bulabilmesi için - TRANSIENT olarak
+                services.AddTransient<LocalCacheDbContext>(sp => 
+                {
+                    var optionsBuilder = new DbContextOptionsBuilder<LocalCacheDbContext>();
+                    optionsBuilder.UseSqlite(connectionString);
+                    return new LocalCacheDbContext(optionsBuilder.Options);
+                });
                 services.AddSingleton<IAccountStore, AccountStoreService>();
-                services.AddSingleton<IPlatformMountProvider, PlatformMountProvider>();
-                services.AddSingleton<IVirtualDriveService, VirtualDriveService>();
+                services.AddTransient<IPlatformMountProvider, PlatformMountProvider>();
+                services.AddTransient<IVirtualDriveService, VirtualDriveService>();
                 
                 // Ayarların yeniden başlatma olmadan (Hot Reload) uygulanmasını sağlayan anlık durum servisi.
                 services.AddSingleton(sp =>
@@ -266,28 +271,35 @@ internal static class Program
                 });
 
                 services.AddSingleton<ISecureStorageService, SecureStorageService>();
-                services.AddSingleton<ISpeechService, WhisperSpeechService>();
+                services.AddTransient<ISpeechService, WhisperSpeechService>();
                 services.AddSingleton<IAudioRecordingService, NAudioRecordingService>();
                 services.AddSingleton<IErrorReporter>(provider => new ErrorReportService(security.ReportFolder));
                 services.AddSingleton<IAppStatusService, AppStatusService>();
                 services.AddSingleton<MultiSych.Desktop.Services.IWindowService, WindowService>();
-                services.AddSingleton<DashboardViewModel>();
-                services.AddSingleton<AccountsViewModel>();
-                services.AddSingleton<AddAccountViewModel>();
-                services.AddSingleton<SyncViewModel>();
-                services.AddSingleton<FileExplorerViewModel>();
-                services.AddSingleton<AIOverviewViewModel>();
-                services.AddSingleton<DocumentAnalyzerViewModel>();
-                services.AddSingleton<CalendarViewModel>();
-                services.AddSingleton<ErrorReportViewModel>();
-                services.AddSingleton<SettingsViewModel>();
-                services.AddSingleton<ChatViewModel>();
-                // 4. Arayüzün ihtiyaç duyduğu yapay zeka servisini ekliyoruz
-                services.AddSingleton<IAIService, AIService>();
+                services.AddTransient<DashboardViewModel>();
+                services.AddTransient<MainWindowViewModel>();
+                services.AddTransient<AccountsViewModel>();
+                services.AddTransient<AddAccountViewModel>();
+                services.AddTransient<SyncViewModel>();
+                services.AddTransient<FileExplorerViewModel>();
+                services.AddTransient<AIOverviewViewModel>();
+                services.AddTransient<DocumentAnalyzerViewModel>();
+                services.AddTransient<CalendarViewModel>();
+                services.AddTransient<ErrorReportViewModel>();
+                services.AddTransient<SettingsViewModel>();
+                services.AddTransient<ChatViewModel>();
+                // 4. Arayüzün ihtiyaç duyduğu yapay zeka servisini ekliyoruz - Transient
+                services.AddTransient<IAIService, AIService>();
                 // 5. .env dosyasını yönetmek için merkezi konfigürasyon servisi
-                services.AddSingleton<IConfigurationService, ConfigurationService>();
+                services.AddSingleton<ConfigurationService>();
+                services.AddSingleton<IConfigurationService>(sp => sp.GetRequiredService<ConfigurationService>());
+                services.AddSingleton<IConfigurationServiceExtended>(sp => sp.GetRequiredService<ConfigurationService>());
                 // 6. Kullanıcı arayüz tercihlerini JSON'da tutacak servis
                 services.AddSingleton<IUserSettingsService, UserSettingsService>();
+                
+                // 7. Yandex OAuth2 Entegrasyonu
+                services.AddTransient<IOAuthService, YandexAuthenticationService>();
+                services.AddTransient<CloudYandexService>();
             })
             .Build();
     }
@@ -319,6 +331,24 @@ internal static class Program
             Console.WriteLine("  --set-ai-key <provider> <key>   Store API key for an AI provider in .env");
         }
 
+        static bool HasValidOAuthCredentials(string? clientId, string? clientSecret)
+        {
+            if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
+                return false;
+
+            static bool LooksLikePlaceholder(string value)
+            {
+                var normalized = value.Trim().ToLowerInvariant();
+                return normalized is "changeme" or "placeholder" or "your_client_id" or "your_client_secret"
+                    || normalized.StartsWith("your_", StringComparison.Ordinal)
+                    || normalized.Contains("example", StringComparison.Ordinal)
+                    || normalized.Contains("<")
+                    || normalized.Contains(">");
+            }
+
+            return !LooksLikePlaceholder(clientId) && !LooksLikePlaceholder(clientSecret);
+        }
+
         try
         {
             switch (command)
@@ -331,13 +361,15 @@ internal static class Program
                     }
 
                     var google = config.Google;
-                    if (google == null || string.IsNullOrWhiteSpace(google.ClientId) || string.IsNullOrWhiteSpace(google.ClientSecret))
+                    if (google == null || !HasValidOAuthCredentials(google.ClientId, google.ClientSecret))
                     {
-                        Console.WriteLine("Google client credentials are not configured.");
+                        Console.WriteLine("Google client credentials are missing or still placeholder values in .env.");
                         return true;
                     }
 
-                    var googleCredentials = await authService.AuthenticateGoogleAsync(google.ClientId, google.ClientSecret, google.RedirectUrl ?? "http://localhost:5000/");
+                    var googleClientId = google.ClientId!;
+                    var googleClientSecret = google.ClientSecret!;
+                    var googleCredentials = await authService.AuthenticateGoogleAsync(googleClientId, googleClientSecret, google.RedirectUrl ?? "http://localhost:5000/");
                     await accountStore.SaveAccountAsync(googleCredentials);
                     Console.WriteLine($"Google account saved: {googleCredentials.Email}");
                     return true;
@@ -350,13 +382,15 @@ internal static class Program
                     }
 
                     var microsoft = config.Microsoft;
-                    if (microsoft == null || string.IsNullOrWhiteSpace(microsoft.ClientId) || string.IsNullOrWhiteSpace(microsoft.ClientSecret))
+                    if (microsoft == null || !HasValidOAuthCredentials(microsoft.ClientId, microsoft.ClientSecret))
                     {
-                        Console.WriteLine("Microsoft client credentials are not configured.");
+                        Console.WriteLine("Microsoft client credentials are missing or still placeholder values in .env.");
                         return true;
                     }
 
-                    var microsoftCredentials = await authService.AuthenticateMicrosoftAsync(microsoft.ClientId, microsoft.ClientSecret, microsoft.RedirectUrl ?? "http://localhost:5000/", microsoft.TenantId);
+                    var microsoftClientId = microsoft.ClientId!;
+                    var microsoftClientSecret = microsoft.ClientSecret!;
+                    var microsoftCredentials = await authService.AuthenticateMicrosoftAsync(microsoftClientId, microsoftClientSecret, microsoft.RedirectUrl ?? "http://localhost:5000/", microsoft.TenantId);
                     await accountStore.SaveAccountAsync(microsoftCredentials);
                     Console.WriteLine($"Microsoft account saved: {microsoftCredentials.Email}");
                     return true;
@@ -369,13 +403,15 @@ internal static class Program
                     }
 
                     var yandex = config.Yandex;
-                    if (yandex == null || string.IsNullOrWhiteSpace(yandex.ClientId) || string.IsNullOrWhiteSpace(yandex.ClientSecret))
+                    if (yandex == null || !HasValidOAuthCredentials(yandex.ClientId, yandex.ClientSecret))
                     {
-                        Console.WriteLine("Yandex client credentials are not configured.");
+                        Console.WriteLine("Yandex client credentials are missing or still placeholder values in .env.");
                         return true;
                     }
 
-                    var yandexCredentials = await authService.AuthenticateYandexAsync(yandex.ClientId, yandex.ClientSecret, yandex.RedirectUrl ?? "http://localhost:5000/");
+                    var yandexClientId = yandex.ClientId!;
+                    var yandexClientSecret = yandex.ClientSecret!;
+                    var yandexCredentials = await authService.AuthenticateYandexAsync(yandexClientId, yandexClientSecret, yandex.RedirectUrl ?? "http://localhost:5000/");
                     await accountStore.SaveAccountAsync(yandexCredentials);
                     Console.WriteLine($"Yandex account saved: {yandexCredentials.Email}");
                     return true;

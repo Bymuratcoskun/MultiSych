@@ -19,7 +19,7 @@ public partial class FileExplorerView : UserControl
 
     private void DragOver(object? sender, DragEventArgs e)
     {
-        if (e.Data.Contains(DataFormats.Files))
+        if (e.DataTransfer.TryGetFiles() is not null)
             e.DragEffects = DragDropEffects.Copy;
         else
             e.DragEffects = DragDropEffects.None;
@@ -27,10 +27,10 @@ public partial class FileExplorerView : UserControl
 
     private void Drop(object? sender, DragEventArgs e)
     {
-        if (e.Data.Contains(DataFormats.Files))
+        var files = e.DataTransfer.TryGetFiles();
+        if (files is not null)
         {
-            var files = e.Data.GetFiles();
-            if (files != null && DataContext is FileExplorerViewModel vm)
+            if (DataContext is FileExplorerViewModel vm)
             {
                 var filePaths = files.Select(x => x.TryGetLocalPath()).Where(x => x != null).Cast<string>().ToList();
                 if (filePaths.Any() && vm.UploadFilesCommand.CanExecute(filePaths))

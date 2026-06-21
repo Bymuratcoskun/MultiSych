@@ -8,9 +8,6 @@ using Microsoft.Extensions.DependencyInjection;
 using MultiSych.Desktop.Services;
 using MultiSych.Services.Data;
 using MultiSych.Services.Interfaces;
-using OxyPlot;
-using OxyPlot.Axes;
-using OxyPlot.Series;
 
 namespace MultiSych.Desktop.ViewModels;
 
@@ -33,7 +30,6 @@ public class DashboardViewModel : ViewModelBase, IDisposable
     private int _totalEmails;
     private int _totalEvents;
     private int _totalFiles;
-    private PlotModel _trendModel = null!;
     private string _dailyAiSummary = "Yapay zeka günün özetini hazırlıyor...";
 
     public ObservableCollection<string> RecentLogs { get; } = [];
@@ -46,8 +42,6 @@ public class DashboardViewModel : ViewModelBase, IDisposable
 
         _statusSubscription = _appStatusService.StatusChanged.Subscribe(OnStatusChanged);
         
-        InitializeChart();
-        
         // Başlangıçta veritabanındaki mevcut sayıları yükle
         Task.Run(LoadInitialCounts);
         Task.Run(LoadAiSummary);
@@ -59,7 +53,6 @@ public class DashboardViewModel : ViewModelBase, IDisposable
     public int TotalEmails { get => _totalEmails; set => SetProperty(ref _totalEmails, value); }
     public int TotalEvents { get => _totalEvents; set => SetProperty(ref _totalEvents, value); }
     public int TotalFiles { get => _totalFiles; set => SetProperty(ref _totalFiles, value); }
-    public PlotModel TrendModel { get => _trendModel; set => SetProperty(ref _trendModel, value); }
     public string DailyAiSummary { get => _dailyAiSummary; set => SetProperty(ref _dailyAiSummary, value); }
 
     private void OnStatusChanged(StatusUpdate update)
@@ -72,7 +65,6 @@ public class DashboardViewModel : ViewModelBase, IDisposable
             if (update.TotalEmails.HasValue) 
             {
                 TotalEmails = update.TotalEmails.Value;
-                UpdateChart(TotalEmails);
             }
             if (update.TotalEvents.HasValue) TotalEvents = update.TotalEvents.Value;
             if (update.TotalFiles.HasValue) TotalFiles = update.TotalFiles.Value;
@@ -83,46 +75,6 @@ public class DashboardViewModel : ViewModelBase, IDisposable
                 if (RecentLogs.Count > 5) RecentLogs.RemoveAt(5); // Sadece son 5 log kaydını tut
             }
         });
-    }
-
-    private void InitializeChart()
-    {
-        TrendModel = new PlotModel 
-        { 
-            TextColor = OxyColors.LightGray, 
-            PlotAreaBorderColor = OxyColors.Transparent
-        };
-        
-        TrendModel.Axes.Add(new DateTimeAxis 
-        { 
-            Position = AxisPosition.Bottom, StringFormat = "HH:mm", 
-            TextColor = OxyColors.LightGray, TicklineColor = OxyColors.Gray,
-            AxislineColor = OxyColors.Gray
-        });
-        
-        TrendModel.Axes.Add(new LinearAxis 
-        { 
-            Position = AxisPosition.Left, MinimumPadding = 0.1, MaximumPadding = 0.1,
-            TextColor = OxyColors.LightGray, TicklineColor = OxyColors.Gray,
-            AxislineColor = OxyColors.Gray
-        });
-        
-        TrendModel.Series.Add(new LineSeries 
-        { 
-            Title = "E-Posta Sayısı", Color = OxyColor.Parse("#0078D7"), 
-            MarkerType = MarkerType.Circle, MarkerSize = 4, 
-            MarkerFill = OxyColor.Parse("#0078D7"), MarkerStroke = OxyColors.White 
-        });
-    }
-
-    private void UpdateChart(int emailCount)
-    {
-        if (TrendModel.Series[0] is LineSeries series)
-        {
-            series.Points.Add(new DataPoint(DateTimeAxis.ToDouble(DateTime.Now), emailCount));
-            if (series.Points.Count > 20) series.Points.RemoveAt(0); // Son 20 noktayı tutarak kaydır
-            TrendModel.InvalidatePlot(true);
-        }
     }
 
     private async Task LoadInitialCounts()

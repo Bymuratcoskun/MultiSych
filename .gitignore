@@ -1,2 +1,17 @@
 .venv/
 *.log
+
+# Build outputs
+**/bin/
+**/obj/
+
+# IDE / local workspace
+.idx/
+.vscode/
+
+# Local environment files
+.env
+
+# Generated runtime logs
+logs/*.txt
+MultiSych.Desktop/logs/*.txt

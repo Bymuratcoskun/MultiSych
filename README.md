@@ -2,7 +2,7 @@
 
 MultiSych, Google, Microsoft ve Yandex bulut hesaplarınızı tek bir merkezden yönetmenizi sağlayan, yapay zeka (AI) destekli, %100 açık kaynaklı ve uçtan uca şifreli, çapraz platform (Windows/Linux/macOS) bir masaüstü asistanıdır.
 
-Arayüzünden arka plan görevlerine, yerel ses işlemeden bulut senkronizasyonuna kadar .NET 8 teknolojisinin sınırlarını zorlayan MultiSych ile veri yönetimini yepyeni bir seviyeye taşıyın!
+Arayüzünden arka plan görevlerine, yerel ses işlemeden bulut senkronizasyonuna kadar .NET 10 teknolojisinin sınırlarını zorlayan MultiSych ile veri yönetimini yepyeni bir seviyeye taşıyın!
 
 ---
 
@@ -37,7 +37,7 @@ Gizliliğinize önem veriyoruz! Sesli komut veya dikte özelliği kullanmak iste
 
 ## 🛠️ Kurulum Rehberi
 
-MultiSych, **.NET 8.0 SDK** gerektirir. Sisteminizde yüklü değilse, öncelikle Microsoft'un resmi sayfasından işletim sisteminize uygun SDK'yı indirin.
+MultiSych, **.NET 10.0 SDK** gerektirir. Sisteminizde yüklü değilse, öncelikle Microsoft'un resmi sayfasından işletim sisteminize uygun SDK'yı indirin.
 
 ### 🐧 Linux (Ubuntu, Arch, Manjaro) Kurulumu
 
@@ -73,11 +73,11 @@ Windows kullanıcıları için ekstra bir kütüphane kurulumuna gerek yoktur. T
 ```bash
 git clone https://github.com/yourusername/MultiSych.git
 cd MultiSych
-dotnet restore MultiSych.slnx
 dotnet build MultiSych.slnx
 dotnet ef database update --project MultiSych.Services/MultiSych.Services.csproj --startup-project MultiSych.Desktop/MultiSych.Desktop.csproj
 ```
 
+- **Reaktif Programlama:** ReactiveUI ile real-time veri güncellemeleri.
 ---
 
 ## 🚀 Kullanım Rehberi
@@ -87,6 +87,15 @@ Projeyi derledikten sonra, masaüstü arayüzünü çalıştırmak için şu kom
 ```bash
 dotnet run --project MultiSych.Desktop/MultiSych.Desktop.csproj
 ```
+
+### Hızlı Doğrulama
+Tüm temel kalite adımlarını tek komutla çalıştırmak için:
+```bash
+./scripts/verify.sh
+```
+
+Manuel uçtan uca kontrol adımları için:
+- [docs/smoke-checklist.md](docs/smoke-checklist.md)
 
 ### 1. Bulut Hesaplarını Bağlama (OAuth2)
 MultiSych, hesapları bağlamak için güvenli bir CLI (Komut Satırı) altyapısı kullanır. Uygulama **kapalıyken** terminalinize bağlanmak istediğiniz hesaba göre şu komutlardan birini yazın:
@@ -98,7 +107,7 @@ MultiSych, hesapları bağlamak için güvenli bir CLI (Komut Satırı) altyapı
 Tarayıcınız açılacak, güvenli giriş yaptıktan sonra onay verdiğinizde Token'larınız sistemin şifreli veritabanına kaydedilecektir.
 
 ### 2. AI Anahtarlarını Ayarlama (API Keys)
-Uygulamayı normal bir şekilde başlatın (`dotnet run`).
+MultiSych, **.NET 10.0 SDK** gerektirir.
 1. Sol menüden **Settings (Ayarlar ⚙️)** sekmesine tıklayın.
 2. **AI Provider Settings** kısmına sahip olduğunuz Copilot, Gemini veya Yandex AI API anahtarlarını yapıştırın.
 3. **Save API Keys** butonuna tıklayarak işlemi kaydedin.
@@ -124,8 +133,8 @@ MultiSych geliştirilirken "Kullanıcı Gizliliği" en ön planda tutulmuştur:
 
 ## 👩‍💻 Geliştirici ve Katkıda Bulunma
 
-MultiSych, sıfırdan .NET 8 standartlarına, MVVM tasarım desenine, Dependency Injection ve Clean Code prensiplerine tamamen sadık kalınarak, hiçbir detayı atlanmadan geliştirilmiş kusursuz bir mimaridir.
+MultiSych, sıfırdan .NET 10 standartlarına, MVVM tasarım desenine, Dependency Injection ve Clean Code prensiplerine tamamen sadık kalınarak, hiçbir detayı atlanmadan geliştirilmiş kusursuz bir mimaridir.
 
 Projeyi Fork edebilir, yeni özellikler için Pull Request gönderebilir ve gelişim sürecinin bir parçası olabilirsiniz!
 
-**Geliştirme Ortamı:** C# 12, .NET 8, Avalonia UI, Entity Framework Core, SQLite (SQLCipher), MailKit, NAudio, Whisper.net.
+**Geliştirme Ortamı:** C# 13, .NET 10, Avalonia UI, Entity Framework Core, SQLite (SQLCipher), MailKit, NAudio, Whisper.net.

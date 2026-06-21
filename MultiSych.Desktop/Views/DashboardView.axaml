@@ -1,7 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:MultiSych.Desktop.ViewModels"
-             xmlns:oxy="clr-namespace:OxyPlot.Avalonia;assembly=OxyPlot.Avalonia"
              x:Class="MultiSych.Desktop.Views.DashboardView"
              x:DataType="vm:DashboardViewModel">
     <Grid Margin="20">
@@ -33,7 +32,7 @@
                 
                 <!-- Tıklanabilir hale getirilen Takvim Etkinlikleri Kartı -->
                 <Button Background="#2D2D30" Padding="20" CornerRadius="8" Margin="0,0,20,20"
-                        Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).NavigateCommand}" 
+                    Command="{Binding DataContext.NavigateCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
                         CommandParameter="Calendar" Cursor="Hand" ToolTip.Tip="Takvim görünümüne gitmek için tıklayın">
                     <StackPanel Spacing="10">
                         <TextBlock Text="📅 Toplam Etkinlik" FontSize="16" Foreground="#CCCCCC"/>
@@ -64,7 +63,10 @@
                 <StackPanel Grid.Column="1" Margin="10,0,0,0">
                     <TextBlock Text="E-Posta Senkronizasyon Trendi" FontSize="20" FontWeight="Bold" Margin="0,0,0,10"/>
                     <Border Background="#2D2D30" Padding="15" CornerRadius="8" Height="250">
-                        <oxy:PlotView Model="{Binding TrendModel}" Background="Transparent"/>
+                        <TextBlock Text="Grafik bileşeni uyumluluk güncellemesi nedeniyle geçici olarak devre dışı."
+                                   Foreground="#CCCCCC"
+                                   TextWrapping="Wrap"
+                                   VerticalAlignment="Center"/>
                     </Border>
                 </StackPanel>
             </Grid>
