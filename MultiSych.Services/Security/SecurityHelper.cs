@@ -8,6 +8,8 @@ using DotNetEnv;
 using Microsoft.Data.Sqlite;
 using MultiSych.Services.Configuration;
 
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("MultiSych.Tests")]
+
 namespace MultiSych.Services.Security
 {
     public static class SecurityHelper
@@ -158,7 +160,7 @@ namespace MultiSych.Services.Security
             return buffer.ToString();
         }
 
-        private static bool ValidateTotpCode(string secret, string code, int digits = 6, int timeStepSeconds = 30)
+        internal static bool ValidateTotpCode(string secret, string code, int digits = 6, int timeStepSeconds = 30)
         {
             try
             {
@@ -183,7 +185,7 @@ namespace MultiSych.Services.Security
             return false;
         }
 
-        private static string GenerateTotp(HMACSHA1 hmac, long counter, int digits)
+        internal static string GenerateTotp(HMACSHA1 hmac, long counter, int digits)
         {
             var counterBytes = BitConverter.GetBytes(counter);
             if (BitConverter.IsLittleEndian)
@@ -200,7 +202,7 @@ namespace MultiSych.Services.Security
             return otp.ToString($"D{digits}");
         }
 
-        private static byte[] Base32Decode(string base32)
+        internal static byte[] Base32Decode(string base32)
         {
             const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
             var output = new List<byte>();

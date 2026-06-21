@@ -299,7 +299,6 @@ internal static class Program
                 
                 // 7. Yandex OAuth2 Entegrasyonu
                 services.AddTransient<IOAuthService, YandexAuthenticationService>();
-                services.AddTransient<CloudYandexService>();
             })
             .Build();
     }
