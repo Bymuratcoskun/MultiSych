@@ -595,59 +595,30 @@ namespace MultiSych.Services.Implementations
 
         // Diğer IStorageService metotları için geçici fırlatmalar (İhtiyaç oldukça dolduracağız)
         public Task<CloudFile> GetFileAsync(AccountCredentials credentials, string fileId) => throw new NotImplementedException();
-        
+
         public async Task SyncStorageAsync(AccountCredentials credentials)
         {
-            _logger.Information("Starting storage sync for provider {Provider}, account {Email}", credentials.Provider, credentials.Email);
+            _logger.Information("Starting storage metadata sync for provider {Provider}, account {Email}", credentials.Provider, credentials.Email);
             
             try
             {
-                var localDrivePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MultiSych", "Drives", credentials.AccountId ?? "Unknown");
-                if (!Directory.Exists(localDrivePath))
-                {
-                    Directory.CreateDirectory(localDrivePath);
-                }
-
-                await SyncFolderRecursiveAsync(credentials, "root", localDrivePath);
-                
-                _logger.Information("Storage sync completed for {Email}", credentials.Email);
+                await SyncFolderRecursiveAsync(credentials, "root");
+                _logger.Information("Storage metadata sync completed for {Email}", credentials.Email);
             }
             catch (Exception ex)
             {
-                _logger.Error(ex, "Error during storage sync for {Email}", credentials.Email);
+                _logger.Error(ex, "Error during storage metadata sync for {Email}", credentials.Email);
             }
         }
 
-        private async Task SyncFolderRecursiveAsync(AccountCredentials credentials, string folderId, string localFolderPath)
+        private async Task SyncFolderRecursiveAsync(AccountCredentials credentials, string folderId)
         {
             var files = await ListFilesAsync(credentials, folderId);
             foreach (var file in files)
             {
-                var filePath = Path.Combine(localFolderPath, file.FileName ?? "Unknown");
                 if (file.IsDirectory)
                 {
-                    if (!Directory.Exists(filePath))
-                        Directory.CreateDirectory(filePath);
-                    
-                    // Klasör bulunduysa metod kendi kendini bu klasörün ID'si ile tekrar çağırıyor
-                    await SyncFolderRecursiveAsync(credentials, file.FileId ?? string.Empty, filePath);
-                }
-                else
-                {
-                    if (!File.Exists(filePath))
-                    {
-                        _logger.Information("Syncing new file {FileName} to local drive...", file.FileName);
-                        try
-                        {
-                            using var cloudStream = await DownloadFileAsync(credentials, file.FileId ?? string.Empty);
-                            using var localStream = new FileStream(filePath, FileMode.Create, FileAccess.Write);
-                            await cloudStream.CopyToAsync(localStream);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.Error(ex, "Failed to download file {FileName} ({FileId})", file.FileName, file.FileId);
-                        }
-                    }
+                    await SyncFolderRecursiveAsync(credentials, file.FileId ?? string.Empty);
                 }
             }
         }
