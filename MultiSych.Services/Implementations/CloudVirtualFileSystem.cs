@@ -23,7 +23,7 @@ public class CloudVirtualFileSystem : IDokanOperations
     private readonly ILogger _logger = Log.ForContext<CloudVirtualFileSystem>();
 
     // Anlık okumaları ram üzerinde tutacak geçici nesnemiz
-    private class FileContext
+    public class FileContext
     {
         public string FileId { get; set; } = string.Empty;
         public string? LocalTempPath { get; set; }
@@ -198,27 +198,72 @@ public class CloudVirtualFileSystem : IDokanOperations
 
         try
         {
-            // Eğer dosya henüz geçici (Temp) diske indirilmediyse indiriyoruz.
+            // Persistent Cache (Kalıcı Önbellek) kontrolü ve optimizasyonu
+            var cacheFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MultiSych", "Cache", _accountId);
+            if (!Directory.Exists(cacheFolder))
+            {
+                Directory.CreateDirectory(cacheFolder);
+            }
+            var localCachePath = Path.Combine(cacheFolder, ctx.FileId);
+
+            using var dbContext = _dbContextFactory.CreateDbContext();
+            var fileEntity = dbContext.CloudFiles.FirstOrDefault(f => f.AccountId == _accountId && f.FileId == ctx.FileId);
+            var expectedSize = fileEntity?.FileSize ?? 0;
+
+            var cacheFileExists = File.Exists(localCachePath);
+            var cacheSizeMatches = cacheFileExists && new System.IO.FileInfo(localCachePath).Length == expectedSize;
+
             if (string.IsNullOrEmpty(ctx.LocalTempPath) || !File.Exists(ctx.LocalTempPath))
             {
-                using var dbContext = _dbContextFactory.CreateDbContext();
-                var accountEntity = dbContext.Accounts.FirstOrDefault(a => a.AccountId == _accountId);
-                if (accountEntity == null) return DokanResult.AccessDenied;
-                
-                var credentials = new AccountCredentials 
+                if (!cacheFileExists || !cacheSizeMatches)
                 {
-                    AccountId = accountEntity.AccountId, Email = accountEntity.Email, Provider = accountEntity.Provider,
-                    AccessToken = accountEntity.AccessToken, RefreshToken = accountEntity.RefreshToken, ExpiresAt = accountEntity.ExpiresAt
-                };
+                    var accountEntity = dbContext.Accounts.FirstOrDefault(a => a.AccountId == _accountId);
+                    if (accountEntity == null) return DokanResult.AccessDenied;
+                    
+                    var credentials = new AccountCredentials 
+                    {
+                        AccountId = accountEntity.AccountId, Email = accountEntity.Email, Provider = accountEntity.Provider,
+                        AccessToken = accountEntity.AccessToken, RefreshToken = accountEntity.RefreshToken, ExpiresAt = accountEntity.ExpiresAt
+                    };
 
-                _logger.Information("On-Demand Download triggered for file {FileName}", fileName);
-                
-                // RAM'in şişmesini önlemek (Video/Büyük Dosya) için belleğe değil, geçici bir diske (Temp) spool ediyoruz
-                var cloudStream = _storageService.DownloadFileAsync(credentials, ctx.FileId).GetAwaiter().GetResult();
-                
-                ctx.LocalTempPath = Path.GetTempFileName();
-                using var tempWriter = new FileStream(ctx.LocalTempPath, FileMode.Create, System.IO.FileAccess.Write, System.IO.FileShare.None);
-                cloudStream.CopyTo(tempWriter);
+                    _logger.Information("On-Demand Download triggered (Cache Miss) for file {FileName}", fileName);
+                    
+                    string? tempFilePath = null;
+                    try
+                    {
+                        var cloudStream = _storageService.DownloadFileAsync(credentials, ctx.FileId).GetAwaiter().GetResult();
+                        
+                        tempFilePath = Path.GetTempFileName();
+                        using (var tempWriter = new FileStream(tempFilePath, FileMode.Create, System.IO.FileAccess.Write, System.IO.FileShare.None))
+                        {
+                            cloudStream.CopyTo(tempWriter);
+                        }
+                        
+                        if (File.Exists(localCachePath))
+                        {
+                            File.Delete(localCachePath);
+                        }
+                        File.Move(tempFilePath, localCachePath);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Warning(ex, "Failed to download from cloud. Checking if stale cache is available.");
+                        if (tempFilePath != null && File.Exists(tempFilePath))
+                        {
+                            try { File.Delete(tempFilePath); } catch { }
+                        }
+                        if (!File.Exists(localCachePath))
+                        {
+                            throw;
+                        }
+                    }
+                }
+                else
+                {
+                    _logger.Information("Cache HIT for file {FileName}, reading from persistent local cache.", fileName);
+                }
+
+                ctx.LocalTempPath = localCachePath;
             }
 
             // Her read işleminde dosyayı kilitlenmeyecek şekilde açıp kapatıyoruz (Disposable)
@@ -255,10 +300,83 @@ public class CloudVirtualFileSystem : IDokanOperations
     {
         if (info.Context is FileContext ctx)
         {
-            // Dosya yalnızca okunduysa (Download) ve diske önbelleklendiyse, diski doldurmaması için Temp dosyasını sil
-            if (!ctx.IsModified && !string.IsNullOrEmpty(ctx.LocalTempPath) && File.Exists(ctx.LocalTempPath))
+            if (ctx.IsModified && !string.IsNullOrEmpty(ctx.LocalTempPath) && File.Exists(ctx.LocalTempPath))
             {
-                try { File.Delete(ctx.LocalTempPath); } catch { }
+                try
+                {
+                    _logger.Information("Uploading modified file {FileName} to cloud...", fileName);
+
+                    using var dbContext = _dbContextFactory.CreateDbContext();
+                    var accountEntity = dbContext.Accounts.FirstOrDefault(a => a.AccountId == _accountId);
+                    if (accountEntity != null)
+                    {
+                        var credentials = new AccountCredentials 
+                        {
+                            AccountId = accountEntity.AccountId, Email = accountEntity.Email, Provider = accountEntity.Provider,
+                            AccessToken = accountEntity.AccessToken, RefreshToken = accountEntity.RefreshToken, ExpiresAt = accountEntity.ExpiresAt
+                        };
+
+                        var parentId = GetParentIdFromPath(GetCleanPath(fileName)) ?? "root";
+
+                        // Dosyayı buluta yükle (Upload)
+                        var newFileId = _storageService.UploadFileAsync(credentials, ctx.LocalTempPath, parentId).GetAwaiter().GetResult();
+
+                        // Yerel önbellek veritabanını güncelle
+                        var path = GetCleanPath(fileName);
+                        var fileEntity = dbContext.CloudFiles.FirstOrDefault(f => f.AccountId == _accountId && f.Path == path);
+
+                        var fileInfo = new System.IO.FileInfo(ctx.LocalTempPath);
+
+                        if (fileEntity != null)
+                        {
+                            // Geçici (temp) ID ile oluşturulmuş yeni bir dosya ise kalıcı gerçek bulut ID'sine dönüştür
+                            if (fileEntity.FileId.StartsWith("temp_"))
+                            {
+                                dbContext.CloudFiles.Remove(fileEntity);
+                                dbContext.SaveChanges();
+
+                                dbContext.CloudFiles.Add(new CloudFileEntity
+                                {
+                                    AccountId = _accountId,
+                                    FileId = newFileId,
+                                    FileName = fileEntity.FileName,
+                                    Path = fileEntity.Path,
+                                    ParentId = fileEntity.ParentId,
+                                    IsDirectory = false,
+                                    FileSize = fileInfo.Length,
+                                    MimeType = fileEntity.MimeType,
+                                    Provider = accountEntity.Provider ?? string.Empty,
+                                    CreatedAt = DateTime.UtcNow,
+                                    UpdatedAt = DateTime.UtcNow
+                                });
+                            }
+                            else
+                            {
+                                fileEntity.FileSize = fileInfo.Length;
+                                fileEntity.UpdatedAt = DateTime.UtcNow;
+                                if (!string.IsNullOrEmpty(newFileId))
+                                {
+                                    fileEntity.FileId = newFileId;
+                                }
+                            }
+                            dbContext.SaveChanges();
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error(ex, "Failed to upload modified file {FileName} to cloud during Cleanup.", fileName);
+                }
+            }
+
+            // Önbellek dosyasını silip kaynakları temizle (Kalıcı önbellek dışındaki temp dosyalarını temizle)
+            if (!string.IsNullOrEmpty(ctx.LocalTempPath) && File.Exists(ctx.LocalTempPath))
+            {
+                var cacheRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MultiSych", "Cache");
+                if (!ctx.LocalTempPath.StartsWith(cacheRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    try { File.Delete(ctx.LocalTempPath); } catch { }
+                }
             }
         }
     }
@@ -505,10 +623,14 @@ public class CloudVirtualFileSystem : IDokanOperations
 
         try
         {
-            // Düzenleme işlemi için diske geçici bir stream oluşturuyoruz.
             if (string.IsNullOrEmpty(ctx.LocalTempPath))
             {
-                ctx.LocalTempPath = Path.GetTempFileName();
+                var cacheFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MultiSych", "Cache", _accountId);
+                if (!Directory.Exists(cacheFolder))
+                {
+                    Directory.CreateDirectory(cacheFolder);
+                }
+                ctx.LocalTempPath = Path.Combine(cacheFolder, ctx.FileId);
             }
 
             using (var fs = new FileStream(ctx.LocalTempPath, FileMode.OpenOrCreate, System.IO.FileAccess.Write, System.IO.FileShare.ReadWrite))

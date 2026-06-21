@@ -6,7 +6,8 @@ SOLUTION="$ROOT_DIR/MultiSych.slnx"
 DESKTOP_PROJECT="$ROOT_DIR/MultiSych.Desktop/MultiSych.Desktop.csproj"
 
 echo "[verify] restore"
-dotnet restore "$SOLUTION"
+dotnet restore "$DESKTOP_PROJECT"
+dotnet restore "$ROOT_DIR/MultiSych.Tests/MultiSych.Tests.csproj"
 
 echo "[verify] build"
 dotnet build "$DESKTOP_PROJECT"

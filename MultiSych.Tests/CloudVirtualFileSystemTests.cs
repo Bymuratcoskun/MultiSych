@@ -183,5 +183,82 @@ namespace MultiSych.Tests
             Assert.Equal("NTFS", fileSystemName);
             Assert.Equal(256u, maximumComponentLength);
         }
+
+        [Fact]
+        public void Cleanup_ModifiedFile_UploadsToCloudAndUpdatesCache()
+        {
+            // Arrange
+            // 1. Seed account
+            using (var context = new LocalCacheDbContext(_dbContextOptions))
+            {
+                context.Accounts.Add(new MultiSych.Services.Data.AccountCredentialEntity
+                {
+                    AccountId = "acc_123",
+                    Email = "test@yandex.com",
+                    Provider = "Yandex",
+                    AccessToken = "token_123",
+                    ExpiresAt = DateTime.UtcNow.AddDays(1)
+                });
+                context.SaveChanges();
+            }
+
+            // 2. Seed temporary cloud file
+            var file = new CloudFileEntity
+            {
+                AccountId = "acc_123",
+                FileId = "temp_file_123",
+                FileName = "newfile.txt",
+                Path = "/newfile.txt",
+                FileSize = 0,
+                IsDirectory = false
+            };
+            SeedDatabase(new List<CloudFileEntity> { file });
+
+            // Create a temp file to simulate modified file content
+            var localTempFile = Path.GetTempFileName();
+            File.WriteAllText(localTempFile, "Hello World from Virtual Drive!");
+
+            // Mock storage upload to return a real cloud file ID
+            _storageServiceMock.Setup(s => s.UploadFileAsync(
+                It.IsAny<AccountCredentials>(),
+                It.IsAny<string>(),
+                It.IsAny<string>()
+            )).ReturnsAsync("real_cloud_file_id");
+
+            var fs = new CloudVirtualFileSystem("acc_123", _storageServiceMock.Object, _dbContextFactoryMock.Object);
+            var fileInfoMock = new Mock<IDokanFileInfo>();
+            
+            // Set up context
+            var fileContext = new CloudVirtualFileSystem.FileContext 
+            { 
+                FileId = "temp_file_123", 
+                LocalTempPath = localTempFile, 
+                IsModified = true 
+            };
+            fileInfoMock.Setup(i => i.Context).Returns(fileContext);
+
+            // Act
+            fs.Cleanup("\\newfile.txt", fileInfoMock.Object);
+
+            // Assert
+            // 1. Verify storage upload was called
+            _storageServiceMock.Verify(s => s.UploadFileAsync(
+                It.Is<AccountCredentials>(c => c.AccountId == "acc_123"),
+                localTempFile,
+                "root"
+            ), Times.Once);
+
+            // 2. Verify local temp file was deleted
+            Assert.False(File.Exists(localTempFile));
+
+            // 3. Verify local cache database was updated with the real file ID and file size
+            using (var context = new LocalCacheDbContext(_dbContextOptions))
+            {
+                var cachedFile = context.CloudFiles.FirstOrDefault(f => f.AccountId == "acc_123" && f.Path == "/newfile.txt");
+                Assert.NotNull(cachedFile);
+                Assert.Equal("real_cloud_file_id", cachedFile.FileId);
+                Assert.True(cachedFile.FileSize > 0);
+            }
+        }
     }
 }

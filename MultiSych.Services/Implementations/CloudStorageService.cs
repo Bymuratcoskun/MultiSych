@@ -304,23 +304,46 @@ namespace MultiSych.Services.Implementations
             });
 
             var fileName = Path.GetFileName(filePath);
-            var fileMetadata = new Google.Apis.Drive.v3.Data.File
-            {
-                Name = fileName,
-                Parents = new List<string> { destinationFolderId }
-            };
+            
+            // Klasörde aynı isimde dosya var mı kontrol et (Duplicate önleme)
+            var listRequest = service.Files.List();
+            listRequest.Q = $"name = '{fileName.Replace("'", "\\'")}' and '{destinationFolderId}' in parents and trashed = false";
+            listRequest.Fields = "files(id)";
+            var listResponse = await listRequest.ExecuteAsync();
+            var existingFile = listResponse.Files?.FirstOrDefault();
 
             using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
-            var request = service.Files.Create(fileMetadata, stream, "application/octet-stream");
-            request.Fields = "id";
 
-            var response = await request.UploadAsync();
-            if (response.Status != Google.Apis.Upload.UploadStatus.Completed)
+            if (existingFile != null)
             {
-                throw new Exception($"Google Drive upload failed: {response.Exception?.Message}");
+                // Var olan dosyayı güncelle (Update)
+                var fileMetadata = new Google.Apis.Drive.v3.Data.File();
+                var updateRequest = service.Files.Update(fileMetadata, existingFile.Id, stream, "application/octet-stream");
+                updateRequest.Fields = "id";
+                var response = await updateRequest.UploadAsync();
+                if (response.Status != Google.Apis.Upload.UploadStatus.Completed)
+                {
+                    throw new Exception($"Google Drive update failed: {response.Exception?.Message}");
+                }
+                return existingFile.Id;
             }
-
-            return request.ResponseBody?.Id ?? string.Empty;
+            else
+            {
+                // Yeni dosya oluştur (Create)
+                var fileMetadata = new Google.Apis.Drive.v3.Data.File
+                {
+                    Name = fileName,
+                    Parents = new List<string> { destinationFolderId }
+                };
+                var request = service.Files.Create(fileMetadata, stream, "application/octet-stream");
+                request.Fields = "id";
+                var response = await request.UploadAsync();
+                if (response.Status != Google.Apis.Upload.UploadStatus.Completed)
+                {
+                    throw new Exception($"Google Drive upload failed: {response.Exception?.Message}");
+                }
+                return request.ResponseBody?.Id ?? string.Empty;
+            }
         }
 
         private async Task<string> UploadToMicrosoftOneDriveAsync(AccountCredentials credentials, string filePath, string destinationFolderId)
