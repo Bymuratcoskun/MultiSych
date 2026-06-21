@@ -102,6 +102,21 @@ namespace MultiSych.Services.Implementations
                             Path = filePath
                         });
                 }
+
+                // Bulutta silinmiş olan dosyaları yerel önbellekten temizle
+                var activeFileIds = files.Select(f => f.FileId).ToHashSet();
+                var cachedFiles = await dbContext.CloudFiles
+                    .Where(f => f.AccountId == credentials.AccountId && f.ParentId == dbParentId)
+                    .ToListAsync();
+
+                foreach (var cachedFile in cachedFiles)
+                {
+                    if (!activeFileIds.Contains(cachedFile.FileId))
+                    {
+                        dbContext.CloudFiles.Remove(cachedFile);
+                    }
+                }
+
                 await dbContext.SaveChangesAsync();
             }
             catch (Exception ex)

@@ -12,12 +12,20 @@ using System.Threading.Tasks;
 using Microsoft.Identity.Client;
 using MultiSych.Services.Interfaces;
 using MultiSych.Services.Models;
+using MultiSych.Services.Configuration;
+using System.Linq;
 using Serilog;
 
 namespace MultiSych.Services.Implementations;
 
 public class AuthenticationService : IAuthenticationService
 {
+    private readonly MultiSychConfig _config;
+
+    public AuthenticationService(MultiSychConfig config)
+    {
+        _config = config;
+    }
     public async Task<AccountCredentials> AuthenticateGoogleAsync(string clientId, string clientSecret, string redirectUrl)
     {
         if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
@@ -185,19 +193,195 @@ public class AuthenticationService : IAuthenticationService
         };
     }
 
-    public Task<bool> RefreshTokenAsync(AccountCredentials credentials)
+    public async Task<bool> RefreshTokenAsync(AccountCredentials credentials)
     {
-        throw new NotImplementedException();
+        if (credentials == null) return false;
+
+        if (string.Equals(credentials.Provider, "Google", StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrWhiteSpace(credentials.RefreshToken))
+                return false;
+
+            try
+            {
+                var clientId = _config.Google?.ClientId;
+                var clientSecret = _config.Google?.ClientSecret;
+
+                if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
+                {
+                    Log.Warning("Google credentials not configured in settings for token refresh.");
+                    return false;
+                }
+
+                using var httpClient = new HttpClient();
+                var tokenRequest = new Dictionary<string, string>
+                {
+                    { "client_id", clientId },
+                    { "client_secret", clientSecret },
+                    { "refresh_token", credentials.RefreshToken },
+                    { "grant_type", "refresh_token" }
+                };
+
+                var response = await httpClient.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(tokenRequest));
+                if (!response.IsSuccessStatusCode)
+                {
+                    var err = await response.Content.ReadAsStringAsync();
+                    Log.Error("Failed to refresh Google token: {Response}", err);
+                    return false;
+                }
+
+                var tokenContent = await response.Content.ReadAsStringAsync();
+                using var tokenDocument = JsonDocument.Parse(tokenContent);
+                var accessToken = tokenDocument.RootElement.GetProperty("access_token").GetString();
+                var expiresIn = tokenDocument.RootElement.GetProperty("expires_in").GetInt32();
+
+                credentials.AccessToken = accessToken ?? string.Empty;
+                credentials.ExpiresAt = DateTime.UtcNow.AddSeconds(expiresIn);
+                
+                if (tokenDocument.RootElement.TryGetProperty("refresh_token", out var rt))
+                {
+                    credentials.RefreshToken = rt.GetString() ?? credentials.RefreshToken;
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to refresh Google token");
+                return false;
+            }
+        }
+        else if (string.Equals(credentials.Provider, "Yandex", StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrWhiteSpace(credentials.RefreshToken))
+                return false;
+
+            try
+            {
+                var clientId = _config.Yandex?.ClientId;
+                var clientSecret = _config.Yandex?.ClientSecret;
+
+                if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
+                {
+                    Log.Warning("Yandex credentials not configured in settings for token refresh.");
+                    return false;
+                }
+
+                using var httpClient = new HttpClient();
+                var tokenRequest = new Dictionary<string, string>
+                {
+                    { "grant_type", "refresh_token" },
+                    { "refresh_token", credentials.RefreshToken },
+                    { "client_id", clientId },
+                    { "client_secret", clientSecret }
+                };
+
+                var response = await httpClient.PostAsync("https://oauth.yandex.com/token", new FormUrlEncodedContent(tokenRequest));
+                if (!response.IsSuccessStatusCode)
+                {
+                    var err = await response.Content.ReadAsStringAsync();
+                    Log.Error("Failed to refresh Yandex token: {Response}", err);
+                    return false;
+                }
+
+                var tokenContent = await response.Content.ReadAsStringAsync();
+                using var tokenDocument = JsonDocument.Parse(tokenContent);
+                var accessToken = tokenDocument.RootElement.GetProperty("access_token").GetString();
+                var expiresIn = tokenDocument.RootElement.GetProperty("expires_in").GetInt32();
+
+                credentials.AccessToken = accessToken ?? string.Empty;
+                credentials.ExpiresAt = DateTime.UtcNow.AddSeconds(expiresIn);
+
+                if (tokenDocument.RootElement.TryGetProperty("refresh_token", out var rt))
+                {
+                    credentials.RefreshToken = rt.GetString() ?? credentials.RefreshToken;
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to refresh Yandex token");
+                return false;
+            }
+        }
+        else if (string.Equals(credentials.Provider, "Microsoft", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var clientId = _config.Microsoft?.ClientId;
+                if (string.IsNullOrWhiteSpace(clientId))
+                {
+                    Log.Warning("Microsoft ClientId not configured in settings for token refresh.");
+                    return false;
+                }
+
+                var app = PublicClientApplicationBuilder.Create(clientId)
+                    .WithAuthority(AzureCloudInstance.AzurePublic, _config.Microsoft?.TenantId ?? "common")
+                    .Build();
+
+                var accounts = await app.GetAccountsAsync();
+                var account = accounts.FirstOrDefault(a => a.Username.Equals(credentials.Email, StringComparison.OrdinalIgnoreCase));
+                if (account != null)
+                {
+                    string[] scopes = { "User.Read", "Mail.ReadWrite", "Calendars.ReadWrite", "Files.ReadWrite.All" };
+                    var result = await app.AcquireTokenSilent(scopes, account).ExecuteAsync();
+                    credentials.AccessToken = result.AccessToken;
+                    credentials.ExpiresAt = result.ExpiresOn.UtcDateTime;
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to refresh Microsoft token silently");
+            }
+        }
+
+        return false;
     }
 
-    public Task RevokeTokenAsync(AccountCredentials credentials)
+    public async Task RevokeTokenAsync(AccountCredentials credentials)
     {
-        throw new NotImplementedException();
+        if (credentials == null || string.IsNullOrWhiteSpace(credentials.AccessToken)) return;
+
+        using var httpClient = new HttpClient();
+        if (string.Equals(credentials.Provider, "Google", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var content = new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    { "token", credentials.AccessToken }
+                });
+                var response = await httpClient.PostAsync("https://oauth2.googleapis.com/revoke", content);
+                response.EnsureSuccessStatusCode();
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Failed to revoke Google token");
+            }
+        }
+        else if (string.Equals(credentials.Provider, "Yandex", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var content = new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    { "access_token", credentials.AccessToken }
+                });
+                await httpClient.PostAsync("https://oauth.yandex.com/revoke_token", content);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Failed to revoke Yandex token");
+            }
+        }
     }
 
     public bool IsTokenExpired(AccountCredentials credentials)
     {
-        throw new NotImplementedException();
+        if (credentials == null) return true;
+        return credentials.ExpiresAt <= DateTime.UtcNow.AddMinutes(1);
     }
 
     private async Task<string?> ListenForCallbackAsync(string redirectUrl)

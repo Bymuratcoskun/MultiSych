@@ -144,7 +144,59 @@ E-posta İçeriği:
 
     public async Task<string> SendMessageAsync(List<ChatHistoryMessage> conversation, string provider)
     {
-        var selectedProvider = provider?.ToLowerInvariant() ?? "gemini";
+        var selectedProvider = provider?.ToLowerInvariant() ?? "hybrid";
+
+        if (selectedProvider == "hybrid")
+        {
+            var errors = new List<string>();
+
+            // 1. Gemini
+            if (!string.IsNullOrWhiteSpace(_config.AI?.GeminiApiKey))
+            {
+                try
+                {
+                    return await SendToGeminiAsync(conversation);
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"Gemini error: {ex.Message}");
+                }
+            }
+
+            // 2. OpenAI / Copilot
+            if (!string.IsNullOrWhiteSpace(_config.AI?.CopilotApiKey))
+            {
+                try
+                {
+                    return await SendToOpenAIAsync(conversation);
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"OpenAI error: {ex.Message}");
+                }
+            }
+
+            // 3. Yandex GPT
+            if (!string.IsNullOrWhiteSpace(_config.AI?.YandexAiApiKey))
+            {
+                try
+                {
+                    return await SendToYandexAsync(conversation);
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"Yandex GPT error: {ex.Message}");
+                }
+            }
+
+            if (errors.Any())
+            {
+                throw new AggregateException("Hybrid AI service failed. All configured providers threw exceptions.", errors.Select(e => new Exception(e)));
+            }
+
+            throw new InvalidOperationException("No AI providers are configured. Please enter API keys in settings.");
+        }
+
         try
         {
             if (selectedProvider.Contains("gemini")) return await SendToGeminiAsync(conversation);
@@ -194,7 +246,7 @@ E-posta İçeriği:
         if (string.IsNullOrWhiteSpace(apiKey)) return "Yandex AI API anahtarı ayarlanmamış.";
 
         using var client = _httpClientFactory.CreateClient();
-        client.DefaultRequestHeaders.Add("Authorization", $"Api-Key {apiKey}");
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Api-Key", apiKey);
 
         var messages = conversation.Select(m => new
         {
@@ -211,7 +263,7 @@ E-posta İçeriği:
         var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
         var response = await client.PostAsync("https://llm.api.cloud.yandex.net/foundationModels/v1/completion", content);
         
-        if (!response.IsSuccessStatusCode) return $"Yandex HTTP Hatası: {response.StatusCode}";
+        response.EnsureSuccessStatusCode();
 
         var responseJson = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(responseJson);
@@ -224,7 +276,7 @@ E-posta İçeriği:
         if (string.IsNullOrWhiteSpace(apiKey)) return "Copilot/OpenAI API anahtarı ayarlanmamış.";
 
         using var client = _httpClientFactory.CreateClient();
-        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
 
         var messages = conversation.Select(m => new
         {
@@ -241,7 +293,7 @@ E-posta İçeriği:
         var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
         var response = await client.PostAsync("https://api.openai.com/v1/chat/completions", content);
         
-        if (!response.IsSuccessStatusCode) return $"OpenAI HTTP Hatası: {response.StatusCode}";
+        response.EnsureSuccessStatusCode();
 
         var responseJson = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(responseJson);
