@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,6 +11,7 @@ using MultiSych.Services.Interfaces;
 using MultiSych.Services.Configuration;
 using Microsoft.EntityFrameworkCore;
 using MultiSych.Services.Data;
+using MultiSych.Services.Models;
 
 namespace MultiSych.Services.Implementations;
 
@@ -54,6 +56,23 @@ public class AutoSyncBackgroundService : BackgroundService
                 if (_runtimeSyncSettings.AutoSyncEnabled)
                 {
                     var currentInterval = TimeSpan.FromMinutes(_runtimeSyncSettings.SyncIntervalMinutes);
+                    
+                    if (PowerStatusHelper.IsOnBattery())
+                    {
+                        var batteryPercent = PowerStatusHelper.GetBatteryPercent();
+                        if (batteryPercent < 20)
+                        {
+                            _logger.Information("Battery is low ({Percent}%). Extending background sync interval to 60 minutes to save power.", batteryPercent);
+                            currentInterval = TimeSpan.FromMinutes(60);
+                        }
+                        else
+                        {
+                            var doubled = _runtimeSyncSettings.SyncIntervalMinutes * 2;
+                            _logger.Information("Device is running on battery ({Percent}%). Doubling sync interval to {Minutes} minutes.", batteryPercent, doubled);
+                            currentInterval = TimeSpan.FromMinutes(doubled);
+                        }
+                    }
+
                     var cts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                     cts.CancelAfter(currentInterval);
                     waitToken = cts.Token;
@@ -94,6 +113,11 @@ public class AutoSyncBackgroundService : BackgroundService
 
         try
         {
+            if (PowerStatusHelper.IsOnBattery() && PowerStatusHelper.GetBatteryPercent() < 20)
+            {
+                _logger.Information("Battery is critical (< 20%). Aborting sync execution to conserve power.");
+                return;
+            }
             // Arka plan servisleri Singleton olduğu için Scoped servisleri yeni bir Scope içinde çağırıyoruz
             using var scope = _scopeFactory.CreateScope();
             
@@ -117,6 +141,9 @@ public class AutoSyncBackgroundService : BackgroundService
                     break;
                 
                 _logger.Information("Auto-syncing account: {Provider} - {Email}", account.Provider, account.Email);
+                
+                // Process any pending offline actions before syncing from cloud
+                await ProcessOfflineSyncQueueAsync(account, storageService, cancellationToken);
                 
                 await emailService.SyncEmailsAsync(account);
                 
@@ -206,6 +233,93 @@ public class AutoSyncBackgroundService : BackgroundService
             {
                 break;
             }
+        }
+    }
+
+    private async Task ProcessOfflineSyncQueueAsync(
+        AccountCredentials account,
+        IStorageService storageService,
+        CancellationToken cancellationToken)
+    {
+        _logger.Information("Checking offline sync queue for account {Email}...", account.Email);
+
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<LocalCacheDbContext>();
+
+            var queueItems = await dbContext.SyncQueueItems
+                .Where(q => q.AccountId == account.AccountId && !q.IsProcessed && q.RetryCount < 3)
+                .OrderBy(q => q.CreatedAt)
+                .ToListAsync(cancellationToken);
+
+            if (queueItems.Count == 0)
+            {
+                return;
+            }
+
+            _logger.Information("Found {Count} pending offline sync queue items for account {Email}.", queueItems.Count, account.Email);
+
+            foreach (var item in queueItems)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                    break;
+
+                _logger.Information("Processing offline queue item: {Action} for {Path} (Id: {Id})", item.Action, item.LocalFilePath, item.Id);
+                
+                try
+                {
+                    if (item.Action == "Upload")
+                    {
+                        if (File.Exists(item.LocalFilePath))
+                        {
+                            var cloudId = await storageService.UploadFileAsync(account, item.LocalFilePath, item.TargetFolderId);
+                            
+                            // If a temporary FileId was created in DB, update it to the real one
+                            var relativePath = "/" + Path.GetRelativePath(
+                                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "MultiSych_Drives", account.AccountId ?? string.Empty),
+                                item.LocalFilePath).Replace('\\', '/');
+                                
+                            var fileEntity = await dbContext.CloudFiles.FirstOrDefaultAsync(f => f.AccountId == account.AccountId && f.Path == relativePath, cancellationToken);
+                            if (fileEntity != null && !string.IsNullOrEmpty(cloudId))
+                            {
+                                fileEntity.FileId = cloudId;
+                                fileEntity.UpdatedAt = DateTime.UtcNow;
+                            }
+                        }
+                    }
+                    else if (item.Action == "Delete")
+                    {
+                        if (!string.IsNullOrEmpty(item.FileId))
+                        {
+                            await storageService.DeleteFileAsync(account, item.FileId);
+                        }
+                    }
+                    else if (item.Action == "Move")
+                    {
+                        if (!string.IsNullOrEmpty(item.FileId))
+                        {
+                            await storageService.MoveFileAsync(account, item.FileId, item.TargetFolderId, item.NewFileName);
+                        }
+                    }
+
+                    item.IsProcessed = true;
+                    item.UpdatedAt = DateTime.UtcNow;
+                }
+                catch (Exception ex)
+                {
+                    item.RetryCount++;
+                    item.ErrorMessage = ex.Message;
+                    item.UpdatedAt = DateTime.UtcNow;
+                    _logger.Warning(ex, "Failed to process offline queue item (Retry: {RetryCount})", item.RetryCount);
+                }
+            }
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error processing offline sync queue for account {Email}", account.Email);
         }
     }
 }

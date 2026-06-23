@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using MultiSych.Services.Data;
 using MultiSych.Services.Interfaces;
 using MultiSych.Services.Models;
+using MultiSych.Services.Configuration;
 using Serilog;
 
 namespace MultiSych.Services.Implementations;
@@ -20,6 +21,7 @@ public class CloudVirtualFileSystem : IDokanOperations
     private readonly string _accountId;
     private readonly IStorageService _storageService;
     private readonly IDbContextFactory<LocalCacheDbContext> _dbContextFactory;
+    private readonly RuntimeSyncSettings? _runtimeSyncSettings;
     private readonly ILogger _logger = Log.ForContext<CloudVirtualFileSystem>();
 
     // Anlık okumaları ram üzerinde tutacak geçici nesnemiz
@@ -30,11 +32,16 @@ public class CloudVirtualFileSystem : IDokanOperations
         public bool IsModified { get; set; }
     }
 
-    public CloudVirtualFileSystem(string accountId, IStorageService storageService, IDbContextFactory<LocalCacheDbContext> dbContextFactory)
+    public CloudVirtualFileSystem(
+        string accountId, 
+        IStorageService storageService, 
+        IDbContextFactory<LocalCacheDbContext> dbContextFactory,
+        RuntimeSyncSettings? runtimeSyncSettings = null)
     {
         _accountId = accountId;
         _storageService = storageService;
         _dbContextFactory = dbContextFactory;
+        _runtimeSyncSettings = runtimeSyncSettings;
     }
 
     public void Mount(string mountPoint, DokanOptions dokanOptions)
@@ -317,19 +324,94 @@ public class CloudVirtualFileSystem : IDokanOperations
                         };
 
                         var parentId = GetParentIdFromPath(GetCleanPath(fileName)) ?? "root";
-
-                        // Dosyayı buluta yükle (Upload)
-                        var newFileId = _storageService.UploadFileAsync(credentials, ctx.LocalTempPath, parentId).GetAwaiter().GetResult();
-
-                        // Yerel önbellek veritabanını güncelle
                         var path = GetCleanPath(fileName);
                         var fileEntity = dbContext.CloudFiles.FirstOrDefault(f => f.AccountId == _accountId && f.Path == path);
 
-                        var fileInfo = new System.IO.FileInfo(ctx.LocalTempPath);
+                        bool hasConflict = false;
+                        string conflictStrategy = _runtimeSyncSettings?.ConflictResolutionStrategy ?? "KeepBoth";
+
+                        if (fileEntity != null && !fileEntity.FileId.StartsWith("temp_"))
+                        {
+                            try
+                            {
+                                var cloudFile = _storageService.GetFileAsync(credentials, fileEntity.FileId).GetAwaiter().GetResult();
+                                if (cloudFile != null && (cloudFile.ModifiedDate - fileEntity.UpdatedAt).TotalSeconds > 2.0)
+                                {
+                                    _logger.Warning("Conflict detected for {FileName}. Cloud version modified at {CloudTime}, Local version opened with last known update time {LocalTime}.", fileName, cloudFile.ModifiedDate, fileEntity.UpdatedAt);
+                                    hasConflict = true;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.Warning(ex, "Failed to fetch cloud file metadata for conflict checking of {FileName}. Assuming no conflict.", fileName);
+                            }
+                        }
+
+                        if (hasConflict)
+                        {
+                            if (conflictStrategy == "ServerWins")
+                            {
+                                _logger.Information("Conflict resolution strategy is ServerWins. Discarding local changes for {FileName}.", fileName);
+                                if (fileEntity != null)
+                                {
+                                    EvictLocalCache(fileEntity.FileId);
+                                }
+                                return; // Do not upload
+                            }
+                            else if (conflictStrategy == "KeepBoth")
+                            {
+                                _logger.Information("Conflict resolution strategy is KeepBoth. Renaming local version of {FileName}.", fileName);
+
+                                var directoryPath = Path.GetDirectoryName(path)?.Replace("\\", "/");
+                                if (string.IsNullOrEmpty(directoryPath)) directoryPath = "/";
+                                if (!directoryPath.EndsWith("/")) directoryPath += "/";
+
+                                var origNameWithoutExt = Path.GetFileNameWithoutExtension(path);
+                                var ext = Path.GetExtension(path);
+                                var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                                var newFileName = $"{origNameWithoutExt} (Local Conflict {timestamp}){ext}";
+                                var newPath = directoryPath + newFileName;
+
+                                var tempDir = Path.GetDirectoryName(ctx.LocalTempPath);
+                                var newTempPath = Path.Combine(tempDir ?? "", Guid.NewGuid().ToString("N"));
+                                File.Copy(ctx.LocalTempPath, newTempPath);
+
+                                var newFileId = _storageService.UploadFileAsync(credentials, newTempPath, parentId).GetAwaiter().GetResult();
+
+                                try { File.Delete(newTempPath); } catch { }
+
+                                var fileInfo = new System.IO.FileInfo(ctx.LocalTempPath);
+                                dbContext.CloudFiles.Add(new CloudFileEntity
+                                {
+                                    AccountId = _accountId,
+                                    FileId = newFileId,
+                                    FileName = newFileName,
+                                    Path = newPath,
+                                    ParentId = parentId,
+                                    IsDirectory = false,
+                                    FileSize = fileInfo.Length,
+                                    MimeType = fileEntity?.MimeType ?? "application/octet-stream",
+                                    Provider = accountEntity.Provider ?? string.Empty,
+                                    CreatedAt = DateTime.UtcNow,
+                                    UpdatedAt = DateTime.UtcNow
+                                });
+                                dbContext.SaveChanges();
+
+                                if (fileEntity != null)
+                                {
+                                    EvictLocalCache(fileEntity.FileId);
+                                }
+                                return;
+                            }
+                        }
+
+                        // Normal upload behavior
+                        var uploadedFileId = _storageService.UploadFileAsync(credentials, ctx.LocalTempPath, parentId).GetAwaiter().GetResult();
+
+                        var fileInfoNormal = new System.IO.FileInfo(ctx.LocalTempPath);
 
                         if (fileEntity != null)
                         {
-                            // Geçici (temp) ID ile oluşturulmuş yeni bir dosya ise kalıcı gerçek bulut ID'sine dönüştür
                             if (fileEntity.FileId.StartsWith("temp_"))
                             {
                                 dbContext.CloudFiles.Remove(fileEntity);
@@ -338,12 +420,12 @@ public class CloudVirtualFileSystem : IDokanOperations
                                 dbContext.CloudFiles.Add(new CloudFileEntity
                                 {
                                     AccountId = _accountId,
-                                    FileId = newFileId,
+                                    FileId = uploadedFileId,
                                     FileName = fileEntity.FileName,
                                     Path = fileEntity.Path,
                                     ParentId = fileEntity.ParentId,
                                     IsDirectory = false,
-                                    FileSize = fileInfo.Length,
+                                    FileSize = fileInfoNormal.Length,
                                     MimeType = fileEntity.MimeType,
                                     Provider = accountEntity.Provider ?? string.Empty,
                                     CreatedAt = DateTime.UtcNow,
@@ -352,11 +434,11 @@ public class CloudVirtualFileSystem : IDokanOperations
                             }
                             else
                             {
-                                fileEntity.FileSize = fileInfo.Length;
+                                fileEntity.FileSize = fileInfoNormal.Length;
                                 fileEntity.UpdatedAt = DateTime.UtcNow;
-                                if (!string.IsNullOrEmpty(newFileId))
+                                if (!string.IsNullOrEmpty(uploadedFileId))
                                 {
-                                    fileEntity.FileId = newFileId;
+                                    fileEntity.FileId = uploadedFileId;
                                 }
                             }
                             dbContext.SaveChanges();
@@ -365,7 +447,43 @@ public class CloudVirtualFileSystem : IDokanOperations
                 }
                 catch (Exception ex)
                 {
-                    _logger.Error(ex, "Failed to upload modified file {FileName} to cloud during Cleanup.", fileName);
+                    _logger.Error(ex, "Failed to upload modified file {FileName} to cloud during Cleanup. Queueing for offline sync.", fileName);
+                    try
+                    {
+                        using var queueDb = _dbContextFactory.CreateDbContext();
+                        var relativePath = GetCleanPath(fileName);
+                        var fileEntity = queueDb.CloudFiles.FirstOrDefault(f => f.AccountId == _accountId && f.Path == relativePath);
+                        var parentId = GetParentIdFromPath(relativePath) ?? "root";
+
+                        // Cache path
+                        var cacheFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MultiSych", "Cache", _accountId);
+                        var persistentCachePath = Path.Combine(cacheFolder, fileEntity?.FileId ?? "temp_" + Guid.NewGuid().ToString("N"));
+                        
+                        // Copy to persistent cache if it's not already there
+                        if (ctx.LocalTempPath != persistentCachePath && File.Exists(ctx.LocalTempPath))
+                        {
+                            var persistentDir = Path.GetDirectoryName(persistentCachePath);
+                            if (!string.IsNullOrEmpty(persistentDir)) Directory.CreateDirectory(persistentDir);
+                            File.Copy(ctx.LocalTempPath, persistentCachePath, true);
+                        }
+
+                        queueDb.SyncQueueItems.Add(new SyncQueueItemEntity
+                        {
+                            AccountId = _accountId,
+                            Action = "Upload",
+                            FileId = fileEntity?.FileId ?? string.Empty,
+                            LocalFilePath = persistentCachePath,
+                            TargetFolderId = parentId,
+                            NewFileName = string.Empty,
+                            IsProcessed = false,
+                            RetryCount = 0
+                        });
+                        queueDb.SaveChanges();
+                    }
+                    catch (Exception dbEx)
+                    {
+                        _logger.Error(dbEx, "Failed to queue offline upload for {FileName}", fileName);
+                    }
                 }
             }
 
@@ -378,6 +496,16 @@ public class CloudVirtualFileSystem : IDokanOperations
                     try { File.Delete(ctx.LocalTempPath); } catch { }
                 }
             }
+        }
+    }
+
+    private void EvictLocalCache(string fileId)
+    {
+        var cacheFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MultiSych", "Cache", _accountId);
+        var localCachePath = Path.Combine(cacheFolder, fileId);
+        if (File.Exists(localCachePath))
+        {
+            try { File.Delete(localCachePath); } catch { }
         }
     }
 
@@ -429,7 +557,29 @@ public class CloudVirtualFileSystem : IDokanOperations
                     catch (Exception ex)
                     {
                         if (attempt == maxRetries)
-                            _logger.Error(ex, "Failed to delete file {FileName} from cloud after {MaxRetries} attempts.", fileName, maxRetries);
+                        {
+                            _logger.Error(ex, "Failed to delete file {FileName} from cloud after {MaxRetries} attempts. Queueing for offline sync.", fileName, maxRetries);
+                            try
+                            {
+                                using var queueDb = _dbContextFactory.CreateDbContext();
+                                queueDb.SyncQueueItems.Add(new SyncQueueItemEntity
+                                {
+                                    AccountId = _accountId,
+                                    Action = "Delete",
+                                    FileId = fileId,
+                                    LocalFilePath = string.Empty,
+                                    TargetFolderId = string.Empty,
+                                    NewFileName = string.Empty,
+                                    IsProcessed = false,
+                                    RetryCount = 0
+                                });
+                                queueDb.SaveChanges();
+                            }
+                            catch (Exception dbEx)
+                            {
+                                _logger.Error(dbEx, "Failed to queue offline delete for {FileName}", fileName);
+                            }
+                        }
                         else
                         {
                             _logger.Warning(ex, "Attempt {Attempt} failed to delete file {FileName} from cloud. Retrying in {Delay}ms...", attempt, fileName, delayMs);
@@ -492,7 +642,29 @@ public class CloudVirtualFileSystem : IDokanOperations
                     catch (Exception ex)
                     {
                         if (attempt == maxRetries)
-                            _logger.Error(ex, "Failed to delete directory {FileName} from cloud after {MaxRetries} attempts.", fileName, maxRetries);
+                        {
+                            _logger.Error(ex, "Failed to delete directory {FileName} from cloud after {MaxRetries} attempts. Queueing for offline sync.", fileName, maxRetries);
+                            try
+                            {
+                                using var queueDb = _dbContextFactory.CreateDbContext();
+                                queueDb.SyncQueueItems.Add(new SyncQueueItemEntity
+                                {
+                                    AccountId = _accountId,
+                                    Action = "Delete",
+                                    FileId = fileId,
+                                    LocalFilePath = string.Empty,
+                                    TargetFolderId = string.Empty,
+                                    NewFileName = string.Empty,
+                                    IsProcessed = false,
+                                    RetryCount = 0
+                                });
+                                queueDb.SaveChanges();
+                            }
+                            catch (Exception dbEx)
+                            {
+                                _logger.Error(dbEx, "Failed to queue offline delete for directory {FileName}", fileName);
+                            }
+                        }
                         else
                         {
                             _logger.Warning(ex, "Attempt {Attempt} failed to delete directory {FileName} from cloud. Retrying in {Delay}ms...", attempt, fileName, delayMs);
@@ -556,6 +728,8 @@ public class CloudVirtualFileSystem : IDokanOperations
             dbContext.SaveChanges();
             _logger.Information("File {OldName} moved to {NewName} locally. Triggering cloud move operation.", oldName, newName);
 
+            var newParentCloudId = newParentEntity?.FileId ?? "root";
+
             // Arka planda bulut taşıma/yeniden adlandırma işlemini tetikle (Retry Mekanizmalı)
             Task.Run(async () =>
             {
@@ -576,8 +750,6 @@ public class CloudVirtualFileSystem : IDokanOperations
                             AccessToken = accountEntity.AccessToken, RefreshToken = accountEntity.RefreshToken, ExpiresAt = accountEntity.ExpiresAt
                         };
 
-                        // newParentEntity.FileId, root için null olabilir. Servis "root" anahtar kelimesini yönetmelidir.
-                        var newParentCloudId = newParentEntity?.FileId ?? "root";
                         await _storageService.MoveFileAsync(credentials, sourceEntity.FileId, newParentCloudId, newFileName);
                         
                         _logger.Information("Successfully moved file {OldName} to {NewName} in the cloud on attempt {Attempt}.", oldName, newName, attempt);
@@ -586,7 +758,29 @@ public class CloudVirtualFileSystem : IDokanOperations
                     catch (Exception ex)
                     {
                         if (attempt == maxRetries)
-                            _logger.Error(ex, "Failed to move file {OldName} to {NewName} in the cloud after {MaxRetries} attempts.", oldName, newName, maxRetries);
+                        {
+                            _logger.Error(ex, "Failed to move file {OldName} to {NewName} in the cloud after {MaxRetries} attempts. Queueing for offline sync.", oldName, newName, maxRetries);
+                            try
+                            {
+                                using var queueDb = _dbContextFactory.CreateDbContext();
+                                queueDb.SyncQueueItems.Add(new SyncQueueItemEntity
+                                {
+                                    AccountId = _accountId,
+                                    Action = "Move",
+                                    FileId = sourceEntity.FileId,
+                                    LocalFilePath = string.Empty,
+                                    TargetFolderId = newParentCloudId,
+                                    NewFileName = newFileName ?? string.Empty,
+                                    IsProcessed = false,
+                                    RetryCount = 0
+                                });
+                                queueDb.SaveChanges();
+                            }
+                            catch (Exception dbEx)
+                            {
+                                _logger.Error(dbEx, "Failed to queue offline move for {OldName}", oldName);
+                            }
+                        }
                         else
                         {
                             _logger.Warning(ex, "Attempt {Attempt} failed to move file {OldName} in the cloud. Retrying in {Delay}ms...", attempt, oldName, delayMs);
@@ -668,13 +862,58 @@ public class CloudVirtualFileSystem : IDokanOperations
 
     public NtStatus GetFileSecurity(string fileName, out FileSystemSecurity security, AccessControlSections sections, IDokanFileInfo info)
     {
-        security = null!;
-        return DokanResult.NotImplemented;
+        if (!OperatingSystem.IsWindows())
+        {
+            security = null!;
+            return DokanResult.NotImplemented;
+        }
+
+        try
+        {
+            var path = GetCleanPath(fileName);
+            using var dbContext = _dbContextFactory.CreateDbContext();
+            var file = dbContext.CloudFiles.FirstOrDefault(f => f.AccountId == _accountId && f.Path == path);
+
+            if (file == null && fileName != "\\")
+            {
+                security = null!;
+                return DokanResult.FileNotFound;
+            }
+
+            if (info.IsDirectory)
+            {
+                var dirSecurity = new DirectorySecurity();
+                dirSecurity.AddAccessRule(new FileSystemAccessRule(
+                    new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.BuiltinUsersSid, null),
+                    FileSystemRights.FullControl,
+                    InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+                    PropagationFlags.None,
+                    AccessControlType.Allow));
+                security = dirSecurity;
+            }
+            else
+            {
+                var fileSecurity = new FileSecurity();
+                fileSecurity.AddAccessRule(new FileSystemAccessRule(
+                    new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.BuiltinUsersSid, null),
+                    FileSystemRights.FullControl,
+                    AccessControlType.Allow));
+                security = fileSecurity;
+            }
+
+            return DokanResult.Success;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "GetFileSecurity failed for {FileName}", fileName);
+            security = null!;
+            return DokanResult.Error;
+        }
     }
 
     public NtStatus SetFileSecurity(string fileName, FileSystemSecurity security, AccessControlSections sections, IDokanFileInfo info)
     {
-        return DokanResult.NotImplemented;
+        return DokanResult.Success;
     }
 
     public NtStatus Mounted(string mountPoint, IDokanFileInfo info)

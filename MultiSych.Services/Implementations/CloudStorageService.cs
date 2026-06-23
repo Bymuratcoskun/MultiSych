@@ -13,6 +13,7 @@ using Google.Apis.Services;
 using MultiSych.Services.Data;
 using MultiSych.Services.Interfaces;
 using MultiSych.Services.Models;
+using MultiSych.Services.Configuration;
 using Serilog;
 
 namespace MultiSych.Services.Implementations
@@ -75,9 +76,20 @@ namespace MultiSych.Services.Implementations
                         filePath = parentPath == "/" ? $"/{file.FileName}" : $"{parentPath}{file.FileName}";
                     }
 
-                    var existing = await dbContext.CloudFiles.FindAsync(file.AccountId, file.FileId);
+                    var existing = await dbContext.CloudFiles.FirstOrDefaultAsync(f => f.AccountId == file.AccountId && f.FileId == file.FileId);
                     if (existing != null)
                     {
+                        // Cache Invalidation: Eğer dosya boyutu veya buluttaki son güncellenme tarihi değiştiyse yerel önbellek dosyasını sil
+                        if (existing.FileSize != file.FileSize || existing.UpdatedAt < file.ModifiedDate)
+                        {
+                            var cacheFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MultiSych", "Cache", credentials.AccountId ?? string.Empty);
+                            var localCachePath = Path.Combine(cacheFolder, file.FileId ?? string.Empty);
+                            if (File.Exists(localCachePath))
+                            {
+                                try { File.Delete(localCachePath); } catch { }
+                            }
+                        }
+
                         existing.FileName = file.FileName ?? string.Empty;
                         existing.MimeType = file.MimeType ?? string.Empty;
                         existing.FileSize = file.FileSize;
@@ -312,7 +324,12 @@ namespace MultiSych.Services.Implementations
             var listResponse = await listRequest.ExecuteAsync();
             var existingFile = listResponse.Files?.FirstOrDefault();
 
-            using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
+            using var baseStream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
+            using var scope = _scopeFactory.CreateScope();
+            var settings = scope.ServiceProvider.GetService<RuntimeSyncSettings>();
+            using Stream stream = (settings != null && settings.MaxUploadSpeedKbps > 0)
+                ? new ThrottledStream(baseStream, settings.MaxUploadSpeedKbps * 1024)
+                : baseStream;
 
             if (existingFile != null)
             {
@@ -356,7 +373,12 @@ namespace MultiSych.Services.Implementations
             using var httpClient = _httpClientFactory.CreateClient();
             httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", credentials.AccessToken);
 
-            using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
+            using var baseStream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
+            using var scope = _scopeFactory.CreateScope();
+            var settings = scope.ServiceProvider.GetService<RuntimeSyncSettings>();
+            using Stream stream = (settings != null && settings.MaxUploadSpeedKbps > 0)
+                ? new ThrottledStream(baseStream, settings.MaxUploadSpeedKbps * 1024)
+                : baseStream;
             using var content = new StreamContent(stream);
             content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
 
@@ -391,7 +413,12 @@ namespace MultiSych.Services.Implementations
             using var linkDoc = JsonDocument.Parse(linkContent);
             var uploadUrl = linkDoc.RootElement.GetProperty("href").GetString() ?? throw new Exception("Upload href is null");
 
-            using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
+            using var baseStream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
+            using var scope = _scopeFactory.CreateScope();
+            var settings = scope.ServiceProvider.GetService<RuntimeSyncSettings>();
+            using Stream stream = (settings != null && settings.MaxUploadSpeedKbps > 0)
+                ? new ThrottledStream(baseStream, settings.MaxUploadSpeedKbps * 1024)
+                : baseStream;
             using var content = new StreamContent(stream);
             
             var uploadResponse = await httpClient.PutAsync(uploadUrl, content);
@@ -406,22 +433,32 @@ namespace MultiSych.Services.Implementations
         {
             _logger.Information("Downloading file {FileId} from {Provider} for account {Email}", fileId, credentials.Provider, credentials.Email);
 
+            Stream baseStream;
             if (credentials.Provider == "Google")
             {
-                return await DownloadFromGoogleDriveAsync(credentials, fileId);
+                baseStream = await DownloadFromGoogleDriveAsync(credentials, fileId);
             }
             else if (credentials.Provider == "Microsoft")
             {
-                return await DownloadFromMicrosoftOneDriveAsync(credentials, fileId);
+                baseStream = await DownloadFromMicrosoftOneDriveAsync(credentials, fileId);
             }
             else if (credentials.Provider == "Yandex")
             {
-                return await DownloadFromYandexDiskAsync(credentials, fileId);
+                baseStream = await DownloadFromYandexDiskAsync(credentials, fileId);
             }
             else
             {
                 throw new NotSupportedException($"Provider {credentials.Provider} is not supported for file downloads.");
             }
+
+            using var scope = _scopeFactory.CreateScope();
+            var settings = scope.ServiceProvider.GetService<RuntimeSyncSettings>();
+            if (settings != null && settings.MaxDownloadSpeedKbps > 0)
+            {
+                return new ThrottledStream(baseStream, settings.MaxDownloadSpeedKbps * 1024);
+            }
+
+            return baseStream;
         }
 
         private async Task<Stream> DownloadFromGoogleDriveAsync(AccountCredentials credentials, string fileId)
@@ -631,8 +668,107 @@ namespace MultiSych.Services.Implementations
             return true;
         }
 
-        // Diğer IStorageService metotları için geçici fırlatmalar (İhtiyaç oldukça dolduracağız)
-        public Task<CloudFile> GetFileAsync(AccountCredentials credentials, string fileId) => throw new NotImplementedException();
+        public async Task<CloudFile> GetFileAsync(AccountCredentials credentials, string fileId)
+        {
+            _logger.Information("Fetching file details for {FileId} from {Provider} for account {Email}", fileId, credentials.Provider, credentials.Email);
+
+            if (credentials.Provider == "Google")
+            {
+                var credential = GoogleCredential.FromAccessToken(credentials.AccessToken);
+                var service = new DriveService(new BaseClientService.Initializer
+                {
+                    HttpClientInitializer = credential,
+                    ApplicationName = "MultiSych"
+                });
+
+                var request = service.Files.Get(fileId);
+                request.Fields = "id, name, mimeType, size, createdTime, modifiedTime";
+                var f = await request.ExecuteAsync();
+
+                return new CloudFile
+                {
+                    FileId = f.Id ?? string.Empty,
+                    FileName = f.Name ?? string.Empty,
+                    MimeType = f.MimeType ?? "application/octet-stream",
+                    FileSize = f.Size ?? 0,
+                    CreatedDate = f.CreatedTimeDateTimeOffset?.UtcDateTime ?? DateTime.UtcNow,
+                    ModifiedDate = f.ModifiedTimeDateTimeOffset?.UtcDateTime ?? DateTime.UtcNow,
+                    IsDirectory = f.MimeType == "application/vnd.google-apps.folder",
+                    Provider = "Google",
+                    AccountId = credentials.AccountId ?? string.Empty
+                };
+            }
+            else if (credentials.Provider == "Microsoft")
+            {
+                var endpoint = $"https://graph.microsoft.com/v1.0/me/drive/items/{fileId}";
+
+                using var httpClient = _httpClientFactory.CreateClient();
+                httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", credentials.AccessToken);
+
+                var response = await httpClient.GetAsync(endpoint);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    _logger.Error("Microsoft Graph API returned an error in GetFileAsync: {Error}", error);
+                    throw new Exception($"Microsoft Graph API error: {response.StatusCode}");
+                }
+
+                var content = await response.Content.ReadAsStringAsync();
+                using var document = JsonDocument.Parse(content);
+                var item = document.RootElement;
+                var isFolder = item.TryGetProperty("folder", out _);
+
+                return new CloudFile
+                {
+                    FileId = item.GetProperty("id").GetString() ?? string.Empty,
+                    FileName = item.GetProperty("name").GetString() ?? string.Empty,
+                    MimeType = isFolder ? "folder" : (item.TryGetProperty("file", out var f) && f.TryGetProperty("mimeType", out var m) ? m.GetString() ?? "application/octet-stream" : "application/octet-stream"),
+                    FileSize = item.TryGetProperty("size", out var size) ? size.GetInt64() : 0,
+                    CreatedDate = item.TryGetProperty("createdDateTime", out var cDate) ? cDate.GetDateTime() : DateTime.UtcNow,
+                    ModifiedDate = item.TryGetProperty("lastModifiedDateTime", out var mDate) ? mDate.GetDateTime() : DateTime.UtcNow,
+                    IsDirectory = isFolder,
+                    Provider = "Microsoft",
+                    AccountId = credentials.AccountId ?? string.Empty
+                };
+            }
+            else if (credentials.Provider == "Yandex")
+            {
+                var endpoint = $"https://cloud-api.yandex.net/v1/disk/resources?path={Uri.EscapeDataString(fileId)}";
+
+                using var httpClient = _httpClientFactory.CreateClient();
+                httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("OAuth", credentials.AccessToken);
+
+                var response = await httpClient.GetAsync(endpoint);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    _logger.Error("Yandex Disk API returned an error in GetFileAsync: {Error}", error);
+                    throw new Exception($"Yandex Disk API error: {response.StatusCode}");
+                }
+
+                var content = await response.Content.ReadAsStringAsync();
+                using var document = JsonDocument.Parse(content);
+                var item = document.RootElement;
+                var isFolder = item.TryGetProperty("type", out var type) && type.GetString() == "dir";
+
+                return new CloudFile
+                {
+                    FileId = item.GetProperty("path").GetString() ?? string.Empty,
+                    FileName = item.GetProperty("name").GetString() ?? string.Empty,
+                    MimeType = item.TryGetProperty("mime_type", out var mime) ? (mime.GetString() ?? "application/octet-stream") : (isFolder ? "folder" : "application/octet-stream"),
+                    FileSize = item.TryGetProperty("size", out var size) ? size.GetInt64() : 0,
+                    CreatedDate = item.TryGetProperty("created", out var cDate) ? cDate.GetDateTime() : DateTime.UtcNow,
+                    ModifiedDate = item.TryGetProperty("modified", out var mDate) ? mDate.GetDateTime() : DateTime.UtcNow,
+                    IsDirectory = isFolder,
+                    Provider = "Yandex",
+                    AccountId = credentials.AccountId ?? string.Empty
+                };
+            }
+            else
+            {
+                throw new NotSupportedException($"Provider {credentials.Provider} is not supported for GetFileAsync.");
+            }
+        }
 
         public async Task SyncStorageAsync(AccountCredentials credentials)
         {
@@ -640,7 +776,19 @@ namespace MultiSych.Services.Implementations
             
             try
             {
-                await SyncFolderRecursiveAsync(credentials, "root");
+                if (credentials.Provider == "Google")
+                {
+                    await SyncGoogleDriveIncrementalAsync(credentials);
+                }
+                else if (credentials.Provider == "Microsoft")
+                {
+                    await SyncMicrosoftOneDriveIncrementalAsync(credentials);
+                }
+                else
+                {
+                    // Yandex Disk or other fallback: Optimize recursive sync by checking folder timestamps
+                    await SyncFolderRecursiveOptimizedAsync(credentials, "root");
+                }
                 _logger.Information("Storage metadata sync completed for {Email}", credentials.Email);
             }
             catch (Exception ex)
@@ -649,16 +797,348 @@ namespace MultiSych.Services.Implementations
             }
         }
 
-        private async Task SyncFolderRecursiveAsync(AccountCredentials credentials, string folderId)
+        private async Task SyncGoogleDriveIncrementalAsync(AccountCredentials credentials)
         {
+            _logger.Information("Performing Google Drive incremental sync for account {Email}", credentials.Email);
+
+            var lastSyncKey = "GoogleLastSyncTime_" + credentials.AccountId;
+            DateTime? lastSyncTime = null;
+            if (credentials.AdditionalProperties != null && credentials.AdditionalProperties.TryGetValue(lastSyncKey, out var valueObj))
+            {
+                if (DateTime.TryParse(valueObj.ToString(), out var dt))
+                {
+                    lastSyncTime = dt.ToUniversalTime();
+                }
+            }
+
+            if (lastSyncTime == null)
+            {
+                _logger.Information("No last sync time found for Google Drive account. Performing full sync...");
+                await SyncFolderRecursiveOptimizedAsync(credentials, "root");
+                await SaveLastSyncTimeAsync(credentials, lastSyncKey, DateTime.UtcNow);
+                return;
+            }
+
+            var credential = GoogleCredential.FromAccessToken(credentials.AccessToken);
+            var service = new DriveService(new BaseClientService.Initializer
+            {
+                HttpClientInitializer = credential,
+                ApplicationName = "MultiSych"
+            });
+
+            using var scope = _scopeFactory.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<LocalCacheDbContext>();
+
+            // 1. Get modified/added files
+            var listRequest = service.Files.List();
+            listRequest.Q = $"modifiedTime > '{lastSyncTime.Value:yyyy-MM-ddTHH:mm:ss.fffZ}' and trashed = false";
+            listRequest.Fields = "files(id, name, mimeType, size, createdTime, modifiedTime, parents)";
+            
+            var modifiedResponse = await listRequest.ExecuteAsync();
+            var modifiedFiles = modifiedResponse.Files;
+
+            if (modifiedFiles != null && modifiedFiles.Count > 0)
+            {
+                foreach (var f in modifiedFiles)
+                {
+                    var parentId = f.Parents?.FirstOrDefault();
+                    var isDir = f.MimeType == "application/vnd.google-apps.folder";
+                    
+                    var path = await ResolveGooglePathRecursiveAsync(dbContext, credentials, parentId, f.Name ?? "Untitled", service);
+
+                    var existing = await dbContext.CloudFiles.FirstOrDefaultAsync(x => x.AccountId == credentials.AccountId && x.FileId == f.Id);
+                    if (existing != null)
+                    {
+                        if (existing.FileSize != (f.Size ?? 0) || existing.UpdatedAt < (f.ModifiedTimeDateTimeOffset?.UtcDateTime ?? DateTime.UtcNow))
+                        {
+                            EvictLocalCacheFile(credentials.AccountId ?? string.Empty, f.Id ?? string.Empty);
+                        }
+
+                        existing.FileName = f.Name ?? string.Empty;
+                        existing.MimeType = f.MimeType ?? string.Empty;
+                        existing.FileSize = f.Size ?? 0;
+                        existing.IsDirectory = isDir;
+                        existing.UpdatedAt = DateTime.UtcNow;
+                        existing.ParentId = parentId;
+                        existing.Path = path;
+                    }
+                    else
+                    {
+                        dbContext.CloudFiles.Add(new CloudFileEntity
+                        {
+                            AccountId = credentials.AccountId ?? string.Empty,
+                            FileId = f.Id ?? string.Empty,
+                            FileName = f.Name ?? string.Empty,
+                            MimeType = f.MimeType ?? string.Empty,
+                            FileSize = f.Size ?? 0,
+                            IsDirectory = isDir,
+                            Provider = "Google",
+                            CreatedAt = f.CreatedTimeDateTimeOffset?.UtcDateTime ?? DateTime.UtcNow,
+                            UpdatedAt = f.ModifiedTimeDateTimeOffset?.UtcDateTime ?? DateTime.UtcNow,
+                            ParentId = parentId,
+                            Path = path
+                        });
+                    }
+                }
+                await dbContext.SaveChangesAsync();
+            }
+
+            // 2. Get deleted/trashed files
+            var deleteRequest = service.Files.List();
+            deleteRequest.Q = $"modifiedTime > '{lastSyncTime.Value:yyyy-MM-ddTHH:mm:ss.fffZ}' and trashed = true";
+            deleteRequest.Fields = "files(id)";
+            var deleteResponse = await deleteRequest.ExecuteAsync();
+            var deletedFiles = deleteResponse.Files;
+
+            if (deletedFiles != null && deletedFiles.Count > 0)
+            {
+                foreach (var d in deletedFiles)
+                {
+                    var existing = await dbContext.CloudFiles.FirstOrDefaultAsync(x => x.AccountId == credentials.AccountId && x.FileId == d.Id);
+                    if (existing != null)
+                    {
+                        dbContext.CloudFiles.Remove(existing);
+                        EvictLocalCacheFile(credentials.AccountId ?? string.Empty, d.Id ?? string.Empty);
+                    }
+                }
+                await dbContext.SaveChangesAsync();
+            }
+
+            await SaveLastSyncTimeAsync(credentials, lastSyncKey, DateTime.UtcNow);
+        }
+
+        private async Task<string> ResolveGooglePathRecursiveAsync(LocalCacheDbContext dbContext, AccountCredentials credentials, string? parentId, string fileName, DriveService service)
+        {
+            if (string.IsNullOrEmpty(parentId) || parentId == "root")
+            {
+                return "/" + fileName;
+            }
+
+            var parent = await dbContext.CloudFiles.FirstOrDefaultAsync(f => f.AccountId == credentials.AccountId && f.FileId == parentId);
+            if (parent != null)
+            {
+                var parentPath = parent.Path;
+                if (!parentPath.EndsWith("/")) parentPath += "/";
+                return parentPath + fileName;
+            }
+
+            try
+            {
+                var req = service.Files.Get(parentId);
+                req.Fields = "id, name, parents, mimeType";
+                var pFile = await req.ExecuteAsync();
+                var gpParentId = pFile.Parents?.FirstOrDefault();
+                var pPath = await ResolveGooglePathRecursiveAsync(dbContext, credentials, gpParentId, pFile.Name, service);
+
+                var pEntity = new CloudFileEntity
+                {
+                    AccountId = credentials.AccountId ?? string.Empty,
+                    FileId = pFile.Id,
+                    FileName = pFile.Name,
+                    Path = pPath,
+                    ParentId = gpParentId,
+                    MimeType = pFile.MimeType ?? "application/vnd.google-apps.folder",
+                    IsDirectory = pFile.MimeType == "application/vnd.google-apps.folder",
+                    Provider = "Google",
+                    FileSize = 0
+                };
+                dbContext.CloudFiles.Add(pEntity);
+                await dbContext.SaveChangesAsync();
+
+                if (!pPath.EndsWith("/")) pPath += "/";
+                return pPath + fileName;
+            }
+            catch
+            {
+                return "/" + fileName;
+            }
+        }
+
+        private async Task SyncMicrosoftOneDriveIncrementalAsync(AccountCredentials credentials)
+        {
+            _logger.Information("Performing Microsoft OneDrive incremental sync using delta for account {Email}", credentials.Email);
+
+            var deltaLinkKey = "OneDriveDeltaLink_" + credentials.AccountId;
+            string? deltaUrl = null;
+            if (credentials.AdditionalProperties != null && credentials.AdditionalProperties.TryGetValue(deltaLinkKey, out var val))
+            {
+                deltaUrl = val?.ToString();
+            }
+
+            if (string.IsNullOrEmpty(deltaUrl))
+            {
+                deltaUrl = "https://graph.microsoft.com/v1.0/me/drive/root/delta";
+            }
+
+            using var httpClient = _httpClientFactory.CreateClient();
+            httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", credentials.AccessToken);
+
+            using var scope = _scopeFactory.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<LocalCacheDbContext>();
+
+            string? nextUrl = deltaUrl;
+            string? latestDeltaLink = null;
+
+            try
+            {
+                while (!string.IsNullOrEmpty(nextUrl))
+                {
+                    var response = await httpClient.GetAsync(nextUrl);
+                    if (response.StatusCode == System.Net.HttpStatusCode.Gone)
+                    {
+                        _logger.Warning("OneDrive delta link expired. Falling back to initial delta sync.");
+                        nextUrl = "https://graph.microsoft.com/v1.0/me/drive/root/delta";
+                        continue;
+                    }
+
+                    response.EnsureSuccessStatusCode();
+
+                    var content = await response.Content.ReadAsStringAsync();
+                    using var document = JsonDocument.Parse(content);
+
+                    if (document.RootElement.TryGetProperty("value", out var items))
+                    {
+                        foreach (var item in items.EnumerateArray())
+                        {
+                            var id = item.GetProperty("id").GetString() ?? string.Empty;
+                            
+                            if (item.TryGetProperty("deleted", out _))
+                            {
+                                var existing = await dbContext.CloudFiles.FirstOrDefaultAsync(x => x.AccountId == credentials.AccountId && x.FileId == id);
+                                if (existing != null)
+                                {
+                                    dbContext.CloudFiles.Remove(existing);
+                                    EvictLocalCacheFile(credentials.AccountId ?? string.Empty, id);
+                                }
+                                continue;
+                            }
+
+                            var name = item.GetProperty("name").GetString() ?? string.Empty;
+                            var isFolder = item.TryGetProperty("folder", out _);
+                            var size = item.TryGetProperty("size", out var sizeEl) ? sizeEl.GetInt64() : 0;
+                            var mDate = item.TryGetProperty("lastModifiedDateTime", out var mDateEl) ? mDateEl.GetDateTime() : DateTime.UtcNow;
+                            var cDate = item.TryGetProperty("createdDateTime", out var cDateEl) ? cDateEl.GetDateTime() : DateTime.UtcNow;
+
+                            string parentPath = "/";
+                            string? parentId = null;
+                            if (item.TryGetProperty("parentReference", out var parentRef))
+                            {
+                                parentId = parentRef.TryGetProperty("id", out var pIdEl) ? pIdEl.GetString() : null;
+                                if (parentRef.TryGetProperty("path", out var pPathEl))
+                                {
+                                    var pPathStr = pPathEl.GetString();
+                                    if (!string.IsNullOrEmpty(pPathStr))
+                                    {
+                                        int colonIdx = pPathStr.IndexOf(':');
+                                        if (colonIdx >= 0)
+                                        {
+                                            parentPath = pPathStr.Substring(colonIdx + 1);
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (!parentPath.StartsWith("/")) parentPath = "/" + parentPath;
+                            if (!parentPath.EndsWith("/")) parentPath += "/";
+                            var itemPath = parentPath + name;
+
+                            var existingEntity = await dbContext.CloudFiles.FirstOrDefaultAsync(x => x.AccountId == credentials.AccountId && x.FileId == id);
+                            if (existingEntity != null)
+                            {
+                                if (existingEntity.FileSize != size || existingEntity.UpdatedAt < mDate)
+                                {
+                                    EvictLocalCacheFile(credentials.AccountId ?? string.Empty, id);
+                                }
+
+                                existingEntity.FileName = name;
+                                existingEntity.MimeType = isFolder ? "folder" : (item.TryGetProperty("file", out var f) && f.TryGetProperty("mimeType", out var m) ? m.GetString() ?? "application/octet-stream" : "application/octet-stream");
+                                existingEntity.FileSize = size;
+                                existingEntity.IsDirectory = isFolder;
+                                existingEntity.UpdatedAt = DateTime.UtcNow;
+                                existingEntity.ParentId = parentId;
+                                existingEntity.Path = itemPath;
+                            }
+                            else
+                            {
+                                dbContext.CloudFiles.Add(new CloudFileEntity
+                                {
+                                    AccountId = credentials.AccountId ?? string.Empty,
+                                    FileId = id,
+                                    FileName = name,
+                                    Path = itemPath,
+                                    ParentId = parentId,
+                                    MimeType = isFolder ? "folder" : (item.TryGetProperty("file", out var f) && f.TryGetProperty("mimeType", out var m) ? m.GetString() ?? "application/octet-stream" : "application/octet-stream"),
+                                    FileSize = size,
+                                    IsDirectory = isFolder,
+                                    Provider = "Microsoft",
+                                    CreatedAt = cDate,
+                                    UpdatedAt = mDate
+                                });
+                            }
+                        }
+                        await dbContext.SaveChangesAsync();
+                    }
+
+                    nextUrl = document.RootElement.TryGetProperty("@odata.nextLink", out var nextLinkEl) ? nextLinkEl.GetString() : null;
+                    latestDeltaLink = document.RootElement.TryGetProperty("@odata.deltaLink", out var deltaLinkEl) ? deltaLinkEl.GetString() : null;
+                }
+
+                if (!string.IsNullOrEmpty(latestDeltaLink))
+                {
+                    await SaveLastSyncTimeAsync(credentials, deltaLinkKey, latestDeltaLink);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Error performing Microsoft OneDrive delta sync.");
+                throw;
+            }
+        }
+
+        private async Task SyncFolderRecursiveOptimizedAsync(AccountCredentials credentials, string folderId)
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<LocalCacheDbContext>();
+
             var files = await ListFilesAsync(credentials, folderId);
+
             foreach (var file in files)
             {
                 if (file.IsDirectory)
                 {
-                    await SyncFolderRecursiveAsync(credentials, file.FileId ?? string.Empty);
+                    var cachedSubfolder = await dbContext.CloudFiles.FirstOrDefaultAsync(f => f.AccountId == credentials.AccountId && f.FileId == file.FileId);
+                    if (cachedSubfolder != null && file.ModifiedDate <= cachedSubfolder.UpdatedAt)
+                    {
+                        _logger.Information("Skipping folder sync for {FolderName} as it is up-to-date.", file.FileName);
+                        continue;
+                    }
+
+                    await SyncFolderRecursiveOptimizedAsync(credentials, file.FileId ?? string.Empty);
                 }
             }
+        }
+
+        private void EvictLocalCacheFile(string accountId, string fileId)
+        {
+            var cacheFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MultiSych", "Cache", accountId);
+            var localCachePath = Path.Combine(cacheFolder, fileId);
+            if (File.Exists(localCachePath))
+            {
+                try { File.Delete(localCachePath); } catch { }
+            }
+        }
+
+        private async Task SaveLastSyncTimeAsync(AccountCredentials credentials, string key, object value)
+        {
+            if (credentials.AdditionalProperties == null)
+            {
+                credentials.AdditionalProperties = new Dictionary<string, object>();
+            }
+            credentials.AdditionalProperties[key] = value;
+
+            using var scope = _scopeFactory.CreateScope();
+            var accountStore = scope.ServiceProvider.GetRequiredService<IAccountStore>();
+            await accountStore.SaveAccountAsync(credentials);
         }
 
         public Task<List<CloudFile>> SearchFilesAsync(AccountCredentials credentials, string query) => throw new NotImplementedException();

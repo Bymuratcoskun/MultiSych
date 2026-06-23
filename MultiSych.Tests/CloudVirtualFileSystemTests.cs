@@ -260,5 +260,59 @@ namespace MultiSych.Tests
                 Assert.True(cachedFile.FileSize > 0);
             }
         }
+
+#pragma warning disable CA1416
+        [Fact]
+        public void GetFileSecurity_RootDirectory_ReturnsSuccess()
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                // Arrange
+                var fs = new CloudVirtualFileSystem("acc_123", _storageServiceMock.Object, _dbContextFactoryMock.Object);
+                var fileInfoMock = new Mock<IDokanFileInfo>();
+                fileInfoMock.Setup(i => i.IsDirectory).Returns(true);
+
+                // Act
+                var status = fs.GetFileSecurity("\\", out var security, System.Security.AccessControl.AccessControlSections.All, fileInfoMock.Object);
+
+                // Assert
+                Assert.Equal(DokanResult.NotImplemented, status);
+                Assert.Null(security);
+                return;
+            }
+
+            // Arrange (Windows-only)
+            {
+                var fs = new CloudVirtualFileSystem("acc_123", _storageServiceMock.Object, _dbContextFactoryMock.Object);
+                var fileInfoMock = new Mock<IDokanFileInfo>();
+                fileInfoMock.Setup(i => i.IsDirectory).Returns(true);
+
+                // Act
+                var status = fs.GetFileSecurity("\\", out var security, System.Security.AccessControl.AccessControlSections.All, fileInfoMock.Object);
+
+                // Assert
+                Assert.Equal(DokanResult.Success, status);
+                Assert.NotNull(security);
+                Assert.IsType<System.Security.AccessControl.DirectorySecurity>(security);
+            }
+        }
+
+        [Fact]
+        public void SetFileSecurity_ReturnsSuccess()
+        {
+            if (!OperatingSystem.IsWindows()) return;
+
+            // Arrange
+            var fs = new CloudVirtualFileSystem("acc_123", _storageServiceMock.Object, _dbContextFactoryMock.Object);
+            var fileInfoMock = new Mock<IDokanFileInfo>();
+            var security = new System.Security.AccessControl.FileSecurity();
+
+            // Act
+            var status = fs.SetFileSecurity("\\test.txt", security, System.Security.AccessControl.AccessControlSections.All, fileInfoMock.Object);
+
+            // Assert
+            Assert.Equal(DokanResult.Success, status);
+        }
+#pragma warning restore CA1416
     }
 }

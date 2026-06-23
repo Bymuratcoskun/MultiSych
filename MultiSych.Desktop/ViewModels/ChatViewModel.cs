@@ -10,6 +10,7 @@ using Avalonia.Threading;
 using MultiSych.Services.Interfaces;
 using MultiSych.Services.Configuration;
 using MultiSych.Services.Models;
+using ReactiveUI;
 
 namespace MultiSych.Desktop.ViewModels;
 
@@ -59,6 +60,15 @@ public class ChatViewModel : ViewModelBase
         _speechService = speechService;
         SendCommand = new RelayCommand(async _ => await SendMessageAsync(), _ => !string.IsNullOrWhiteSpace(InputText) && !IsBusy);
         ToggleRecordingCommand = new RelayCommand(async _ => await ToggleRecordingAsync(), _ => !IsBusy);
+
+        MessageBus.Current.Listen<string>("PartialTranscription")
+            .Subscribe(text =>
+            {
+                if (IsRecording)
+                {
+                    Dispatcher.UIThread.Post(() => InputText = text);
+                }
+            });
 
         // Başlangıç mesajı
         var initialMessage = new ChatUIMessage { IsUser = false };
@@ -234,12 +244,14 @@ public class ChatViewModel : ViewModelBase
 
                 _tempAudioFilePath = Path.Combine(Path.GetTempPath(), $"multisych_mic_{Guid.NewGuid()}.wav");
                 _audioRecordingService.StartRecording(_tempAudioFilePath);
+                _speechService.StartRealTimeTranscription(_tempAudioFilePath);
                 IsRecording = true;
                 IsBusy = false;
             }
             else
             {
                 IsBusy = true;
+                _speechService.StopRealTimeTranscription();
                 await _audioRecordingService.StopRecordingAsync();
                 IsRecording = false;
 
@@ -263,6 +275,7 @@ public class ChatViewModel : ViewModelBase
             var errorMessage = new ChatUIMessage { IsUser = false };
             errorMessage.Segments.Add(new TextSegment { Text = $"Ses kaydı hatası: {ex.Message}" });
             Dispatcher.UIThread.Post(() => Messages.Add(errorMessage));
+            _speechService.StopRealTimeTranscription();
             if (IsRecording) await _audioRecordingService.StopRecordingAsync();
             IsRecording = false;
             IsBusy = false;

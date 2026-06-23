@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Threading;
@@ -18,6 +19,13 @@ public class AccountStatusItem
     public string Status { get; set; } = string.Empty;
 }
 
+public class EmailSyncTrendPoint
+{
+    public string DayName { get; set; } = string.Empty;
+    public int Count { get; set; }
+    public double BarHeight { get; set; }
+}
+
 public class DashboardViewModel : ViewModelBase, IDisposable
 {
     private readonly IAppStatusService _appStatusService;
@@ -31,9 +39,11 @@ public class DashboardViewModel : ViewModelBase, IDisposable
     private int _totalEvents;
     private int _totalFiles;
     private string _dailyAiSummary = "Yapay zeka günün özetini hazırlıyor...";
+    private string _cacheSize = "Hesaplanıyor...";
 
     public ObservableCollection<string> RecentLogs { get; } = [];
     public ObservableCollection<AccountStatusItem> AccountStatuses { get; } = [];
+    public ObservableCollection<EmailSyncTrendPoint> SyncTrendData { get; } = [];
 
     public DashboardViewModel(IAppStatusService appStatusService, IServiceScopeFactory scopeFactory)
     {
@@ -45,6 +55,7 @@ public class DashboardViewModel : ViewModelBase, IDisposable
         // Başlangıçta veritabanındaki mevcut sayıları yükle
         Task.Run(LoadInitialCounts);
         Task.Run(LoadAiSummary);
+        Task.Run(LoadSyncTrendData);
     }
 
     public string StatusMessage { get => _statusMessage; set => SetProperty(ref _statusMessage, value); }
@@ -54,6 +65,7 @@ public class DashboardViewModel : ViewModelBase, IDisposable
     public int TotalEvents { get => _totalEvents; set => SetProperty(ref _totalEvents, value); }
     public int TotalFiles { get => _totalFiles; set => SetProperty(ref _totalFiles, value); }
     public string DailyAiSummary { get => _dailyAiSummary; set => SetProperty(ref _dailyAiSummary, value); }
+    public string CacheSize { get => _cacheSize; set => SetProperty(ref _cacheSize, value); }
 
     private void OnStatusChanged(StatusUpdate update)
     {
@@ -118,6 +130,90 @@ public class DashboardViewModel : ViewModelBase, IDisposable
         catch
         {
             Dispatcher.UIThread.Post(() => DailyAiSummary = "Yapay zeka özeti şu an kullanılamıyor.");
+        }
+    }
+
+    private async Task LoadSyncTrendData()
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<LocalCacheDbContext>();
+
+            var today = DateTime.UtcNow.Date;
+            var last7Days = Enumerable.Range(0, 7)
+                .Select(i => today.AddDays(-i))
+                .Reverse()
+                .ToList();
+
+            var trendPoints = new System.Collections.Generic.List<EmailSyncTrendPoint>();
+
+            var startDate = today.AddDays(-6);
+            var emailsInPeriod = await dbContext.CachedEmails
+                .Where(e => e.ReceivedAt >= startDate)
+                .ToListAsync();
+
+            var grouped = emailsInPeriod
+                .GroupBy(e => e.ReceivedAt.Date)
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            foreach (var date in last7Days)
+            {
+                grouped.TryGetValue(date, out var count);
+                trendPoints.Add(new EmailSyncTrendPoint
+                {
+                    DayName = date.ToString("ddd"),
+                    Count = count
+                });
+            }
+
+            var maxCount = trendPoints.Max(p => p.Count);
+
+            foreach (var point in trendPoints)
+            {
+                point.BarHeight = maxCount > 0 ? ((double)point.Count / maxCount * 130) + 10 : 10;
+            }
+
+            var cacheSizeStr = GetCacheSizeString();
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                SyncTrendData.Clear();
+                foreach (var point in trendPoints)
+                {
+                    SyncTrendData.Add(point);
+                }
+                CacheSize = cacheSizeStr;
+            });
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "Failed to load email sync trend or cache size");
+        }
+    }
+
+    private string GetCacheSizeString()
+    {
+        try
+        {
+            var cacheFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MultiSych", "Cache");
+            if (!Directory.Exists(cacheFolder))
+                return "0 KB";
+
+            var dirInfo = new DirectoryInfo(cacheFolder);
+            long totalSize = dirInfo.EnumerateFiles("*", SearchOption.AllDirectories).Sum(file => file.Length);
+
+            if (totalSize >= 1024 * 1024 * 1024)
+                return $"{totalSize / (1024.0 * 1024.0 * 1024.0):F1} GB";
+            if (totalSize >= 1024 * 1024)
+                return $"{totalSize / (1024.0 * 1024.0):F1} MB";
+            if (totalSize >= 1024)
+                return $"{totalSize / 1024.0:F1} KB";
+            return $"{totalSize} B";
+        }
+        catch
+        {
+            return "0 KB";
         }
     }
 

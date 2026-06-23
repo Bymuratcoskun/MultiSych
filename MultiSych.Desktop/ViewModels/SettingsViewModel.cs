@@ -136,6 +136,19 @@ public class SettingsViewModel : ViewModelBase
         }
     }
 
+    public string YandexFolderId
+    {
+        get => _config.AI?.YandexFolderId ?? string.Empty;
+        set
+        {
+            if (_config.AI != null)
+            {
+                _config.AI.YandexFolderId = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
     public string SelectedLanguage
     {
         get => _selectedLanguage;
@@ -194,7 +207,8 @@ public class SettingsViewModel : ViewModelBase
                 { "MULTISYCH_AUTO_SYNC", AutoSyncEnabled.ToString() },
                 { "COPILOT_API_KEY", CopilotApiKey },
                 { "GEMINI_API_KEY", GeminiApiKey },
-            { "YANDEX_API_KEY", YandexApiKey },
+                { "YANDEX_API_KEY", YandexApiKey },
+                { "YANDEX_FOLDER_ID", YandexFolderId },
             };
 
             // Çevresel ve API ayarlarını .env'ye kaydet

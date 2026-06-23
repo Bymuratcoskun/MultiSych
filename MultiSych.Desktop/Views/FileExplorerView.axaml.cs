@@ -15,6 +15,23 @@ public partial class FileExplorerView : UserControl
         InitializeComponent();
         AddHandler(DragDrop.DropEvent, Drop);
         AddHandler(DragDrop.DragOverEvent, DragOver);
+        AddHandler(DragDrop.DragEnterEvent, DragEnter);
+        AddHandler(DragDrop.DragLeaveEvent, DragLeave);
+    }
+
+    private void DragEnter(object? sender, DragEventArgs e)
+    {
+        if (e.DataTransfer.TryGetFiles() is not null)
+        {
+            var overlay = this.FindControl<Border>("DragOverlay");
+            if (overlay != null) overlay.IsVisible = true;
+        }
+    }
+
+    private void DragLeave(object? sender, DragEventArgs e)
+    {
+        var overlay = this.FindControl<Border>("DragOverlay");
+        if (overlay != null) overlay.IsVisible = false;
     }
 
     private void DragOver(object? sender, DragEventArgs e)
@@ -27,6 +44,9 @@ public partial class FileExplorerView : UserControl
 
     private void Drop(object? sender, DragEventArgs e)
     {
+        var overlay = this.FindControl<Border>("DragOverlay");
+        if (overlay != null) overlay.IsVisible = false;
+
         var files = e.DataTransfer.TryGetFiles();
         if (files is not null)
         {
@@ -45,6 +65,16 @@ public partial class FileExplorerView : UserControl
     {
         // Tablodaki bir satıra çift tıklandığında eğer bu bir klasörse içine gir (Navigate)
         if (sender is DataGrid grid && grid.SelectedItem is CloudFileEntity file)
+        {
+            if (DataContext is FileExplorerViewModel vm && vm.OpenFolderCommand.CanExecute(file))
+                vm.OpenFolderCommand.Execute(file);
+        }
+    }
+
+    private void OnListBoxDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        // Izgara görünümündeki bir karta çift tıklandığında eğer bu bir klasörse içine gir
+        if (sender is ListBox listBox && listBox.SelectedItem is CloudFileEntity file)
         {
             if (DataContext is FileExplorerViewModel vm && vm.OpenFolderCommand.CanExecute(file))
                 vm.OpenFolderCommand.Execute(file);

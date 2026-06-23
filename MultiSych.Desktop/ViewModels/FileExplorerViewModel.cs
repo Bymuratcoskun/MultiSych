@@ -20,6 +20,7 @@ public class FileExplorerViewModel : ViewModelBase
     private string _searchQuery = string.Empty;
     private string? _selectedAccountId;
     private bool _isLoading;
+    private bool _isGridView = true;
 
     public ObservableCollection<CloudFileEntity> Files { get; } = [];
     public ObservableCollection<AccountCredentials> Accounts { get; } = [];
@@ -39,6 +40,8 @@ public class FileExplorerViewModel : ViewModelBase
         });
 
         UploadFilesCommand = new RelayCommand<List<string>>(async paths => await UploadFilesAsync(paths), paths => !IsLoading && !string.IsNullOrEmpty(SelectedAccountId));
+        SwitchToListViewCommand = new RelayCommand(_ => IsGridView = false);
+        SwitchToGridViewCommand = new RelayCommand(_ => IsGridView = true);
 
         Task.Run(async () =>
         {
@@ -69,11 +72,14 @@ public class FileExplorerViewModel : ViewModelBase
     }
 
     public bool IsLoading { get => _isLoading; set => SetProperty(ref _isLoading, value); }
+    public bool IsGridView { get => _isGridView; set => SetProperty(ref _isGridView, value); }
 
     public ICommand NavigateUpCommand { get; }
     public ICommand RefreshCommand { get; }
     public ICommand OpenFolderCommand { get; }
     public ICommand UploadFilesCommand { get; }
+    public ICommand SwitchToListViewCommand { get; }
+    public ICommand SwitchToGridViewCommand { get; }
 
     private async Task LoadFilesAsync()
     {

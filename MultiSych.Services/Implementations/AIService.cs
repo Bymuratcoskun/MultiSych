@@ -245,6 +245,9 @@ E-posta İçeriği:
         var apiKey = _config.AI?.YandexAiApiKey;
         if (string.IsNullOrWhiteSpace(apiKey)) return "Yandex AI API anahtarı ayarlanmamış.";
 
+        var folderId = _config.AI?.YandexFolderId;
+        if (string.IsNullOrWhiteSpace(folderId)) folderId = "b1g00000000000000000";
+
         using var client = _httpClientFactory.CreateClient();
         client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Api-Key", apiKey);
 
@@ -255,7 +258,7 @@ E-posta İçeriği:
         }).ToList();
 
         var payload = new {
-            modelUri = "gpt://b1g00000000000000000/yandexgpt/latest", // Yandex Klasör ID'nizi ayarlarınızdan dinamik çekebilirsiniz
+            modelUri = $"gpt://{folderId}/yandexgpt/latest", // Yandex Klasör ID'nizi ayarlarınızdan dinamik alıyoruz
             completionOptions = new { stream = false, temperature = 0.6, maxTokens = 1000 },
             messages
         };

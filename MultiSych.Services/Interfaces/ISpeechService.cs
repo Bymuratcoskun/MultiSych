@@ -8,5 +8,7 @@ namespace MultiSych.Services.Interfaces
         Task<string> TranscribeAudioAsync(string audioFilePath);
         Task SpeakAsync(string text);
         void StopSpeaking();
+        void StartRealTimeTranscription(string tempFilePath);
+        void StopRealTimeTranscription();
     }
 }

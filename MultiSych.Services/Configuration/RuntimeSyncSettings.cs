@@ -8,4 +8,7 @@ public class RuntimeSyncSettings
 {
     public int SyncIntervalMinutes { get; set; } = 15;
     public bool AutoSyncEnabled { get; set; } = true;
+    public string ConflictResolutionStrategy { get; set; } = "KeepBoth";
+    public int MaxUploadSpeedKbps { get; set; } = 0;
+    public int MaxDownloadSpeedKbps { get; set; } = 0;
 }

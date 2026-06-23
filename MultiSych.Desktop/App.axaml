@@ -1,12 +1,58 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="using:MultiSych.Desktop"
+             xmlns:converters="using:MultiSych.Desktop.Converters"
              x:Class="MultiSych.Desktop.App">
     <Application.DataTemplates>
         <local:ViewLocator/>
     </Application.DataTemplates>
 
+    <Application.Resources>
+        <ResourceDictionary>
+            <converters:FileSizeConverter x:Key="FileSizeConverter"/>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="MainBgBrush">#F4F4F7</SolidColorBrush>
+                    <SolidColorBrush x:Key="CardBgBrush">#FFFFFF</SolidColorBrush>
+                    <SolidColorBrush x:Key="TextBrush">#1C1C1E</SolidColorBrush>
+                    <SolidColorBrush x:Key="SubTextBrush">#666666</SolidColorBrush>
+                    <SolidColorBrush x:Key="BorderBrush">#E5E5EA</SolidColorBrush>
+                    <SolidColorBrush x:Key="SidebarBgBrush">#E5E5EA</SolidColorBrush>
+                    <SolidColorBrush x:Key="AccentBrush">#007AFF</SolidColorBrush>
+                    <SolidColorBrush x:Key="AccentTextBrush">#FFFFFF</SolidColorBrush>
+                    <SolidColorBrush x:Key="SecondaryButtonBgBrush">#E5E5EA</SolidColorBrush>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="MainBgBrush">#121212</SolidColorBrush>
+                    <SolidColorBrush x:Key="CardBgBrush">#1E1E1E</SolidColorBrush>
+                    <SolidColorBrush x:Key="TextBrush">#FFFFFF</SolidColorBrush>
+                    <SolidColorBrush x:Key="SubTextBrush">#AAAAAA</SolidColorBrush>
+                    <SolidColorBrush x:Key="BorderBrush">#2D2D30</SolidColorBrush>
+                    <SolidColorBrush x:Key="SidebarBgBrush">#1C1C1E</SolidColorBrush>
+                    <SolidColorBrush x:Key="AccentBrush">#0A84FF</SolidColorBrush>
+                    <SolidColorBrush x:Key="AccentTextBrush">#FFFFFF</SolidColorBrush>
+                    <SolidColorBrush x:Key="SecondaryButtonBgBrush">#2C2C2E</SolidColorBrush>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+
     <Application.Styles>
         <FluentTheme />
+        <Style Selector="Button">
+            <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.15"/>
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button:pointerover">
+            <Setter Property="RenderTransform" Value="scale(1.02)"/>
+        </Style>
+        <Style Selector="Button:pressed">
+            <Setter Property="RenderTransform" Value="scale(0.98)"/>
+        </Style>
     </Application.Styles>
 </Application>

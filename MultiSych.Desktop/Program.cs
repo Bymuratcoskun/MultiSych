@@ -214,7 +214,8 @@ internal static class Program
             {
                 CopilotApiKey = Environment.GetEnvironmentVariable("COPILOT_API_KEY") ?? string.Empty,
                 GeminiApiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY") ?? string.Empty,
-                YandexAiApiKey = Environment.GetEnvironmentVariable("YANDEX_AI_API_KEY") ?? string.Empty
+                YandexAiApiKey = Environment.GetEnvironmentVariable("YANDEX_AI_API_KEY") ?? string.Empty,
+                YandexFolderId = Environment.GetEnvironmentVariable("YANDEX_FOLDER_ID") ?? string.Empty
             },
             Security = new SecuritySettings
             {
@@ -266,7 +267,11 @@ internal static class Program
                     var appConfig = sp.GetRequiredService<MultiSychConfig>();
                     return new RuntimeSyncSettings
                     {
-                        SyncIntervalMinutes = appConfig.Sync?.SyncIntervalMinutes ?? 15
+                        SyncIntervalMinutes = appConfig.Sync?.SyncIntervalMinutes ?? 15,
+                        AutoSyncEnabled = appConfig.Sync?.AutoSyncEnabled ?? true,
+                        ConflictResolutionStrategy = appConfig.Sync?.ConflictResolutionStrategy ?? "KeepBoth",
+                        MaxUploadSpeedKbps = appConfig.Sync?.MaxUploadSpeedKbps ?? 0,
+                        MaxDownloadSpeedKbps = appConfig.Sync?.MaxDownloadSpeedKbps ?? 0
                     };
                 });
 

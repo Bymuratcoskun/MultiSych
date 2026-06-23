@@ -15,26 +15,110 @@
             <TextBox Text="{Binding SearchQuery}" Watermark="Sanal Sürücüde Ara..." Width="220" VerticalAlignment="Center" Margin="10,0,0,0"/>
             <TextBlock Text="{Binding CurrentPath}" VerticalAlignment="Center" FontWeight="SemiBold" Margin="10,0,0,0"/>
             <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" Width="100" Height="4" VerticalAlignment="Center"/>
+            
+            <!-- Görünüm Seçici Butonlar -->
+            <StackPanel Orientation="Horizontal" Spacing="5" Margin="20,0,0,0" VerticalAlignment="Center">
+                <Button Content="☰ Liste" Command="{Binding SwitchToListViewCommand}" IsEnabled="{Binding IsGridView}"/>
+                <Button Content="⧉ Izgara" Command="{Binding SwitchToGridViewCommand}" IsEnabled="{Binding !IsGridView}"/>
+            </StackPanel>
         </StackPanel>
 
-        <!-- DoubleTapped eventi ile klasör içine geçiş -->
-        <DataGrid Grid.Row="2" ItemsSource="{Binding Files}" AutoGenerateColumns="False" IsReadOnly="True" GridLinesVisibility="Horizontal" DoubleTapped="OnRowDoubleTapped">
-            <DataGrid.Columns>
-                <DataGridTemplateColumn Header="Tür" Width="60">
-                    <DataGridTemplateColumn.CellTemplate>
-                        <DataTemplate x:DataType="data:CloudFileEntity">
-                            <Panel>
-                                <TextBlock Text="📁" IsVisible="{Binding IsDirectory}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                <TextBlock Text="📄" IsVisible="{Binding !IsDirectory}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Panel>
-                        </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
-                <DataGridTextColumn Header="Dosya Adı" Binding="{Binding FileName}" Width="*"/>
-                <DataGridTextColumn Header="Oluşturulma" Binding="{Binding CreatedAt}" Width="200"/>
-                <DataGridTextColumn Header="Değiştirilme" Binding="{Binding UpdatedAt}" Width="200"/>
-                <DataGridTextColumn Header="Boyut (Bayt)" Binding="{Binding FileSize}" Width="150"/>
-            </DataGrid.Columns>
-        </DataGrid>
+        <!-- Liste / Izgara Görünümleri ve Sürükle-Bırak Katmanı -->
+        <Grid Grid.Row="2">
+            <!-- Liste Görünümü (DataGrid) -->
+            <DataGrid ItemsSource="{Binding Files}" 
+                      AutoGenerateColumns="False" 
+                      IsReadOnly="True" 
+                      GridLinesVisibility="Horizontal" 
+                      DoubleTapped="OnRowDoubleTapped"
+                      IsVisible="{Binding !IsGridView}">
+                <DataGrid.Columns>
+                    <DataGridTemplateColumn Header="Tür" Width="60">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate x:DataType="data:CloudFileEntity">
+                                <Panel>
+                                    <TextBlock Text="📁" IsVisible="{Binding IsDirectory}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    <TextBlock Text="📄" IsVisible="{Binding !IsDirectory}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Panel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="Dosya Adı" Binding="{Binding FileName}" Width="*"/>
+                    <DataGridTextColumn Header="Oluşturulma" Binding="{Binding CreatedAt}" Width="200"/>
+                    <DataGridTextColumn Header="Değiştirilme" Binding="{Binding UpdatedAt}" Width="200"/>
+                    <DataGridTextColumn Header="Boyut" Binding="{Binding FileSize, Converter={StaticResource FileSizeConverter}}" Width="150"/>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <!-- Izgara Görünümü (ListBox + WrapPanel) -->
+            <ListBox ItemsSource="{Binding Files}" 
+                     IsVisible="{Binding IsGridView}"
+                     DoubleTapped="OnListBoxDoubleTapped"
+                     Background="Transparent"
+                     BorderThickness="0">
+                <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="data:CloudFileEntity">
+                        <Border Background="{DynamicResource CardBgBrush}" 
+                                BorderBrush="{DynamicResource BorderBrush}" 
+                                BorderThickness="1" 
+                                CornerRadius="8" 
+                                Padding="12" 
+                                Margin="6" 
+                                Width="140" 
+                                Height="140"
+                                ToolTip.Tip="{Binding FileName}">
+                            <Grid RowDefinitions="*, Auto, Auto">
+                                <!-- Simge -->
+                                <Panel Grid.Row="0" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <TextBlock Text="📁" FontSize="44" IsVisible="{Binding IsDirectory}" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="📄" FontSize="44" IsVisible="{Binding !IsDirectory}" HorizontalAlignment="Center"/>
+                                </Panel>
+                                
+                                <!-- Dosya İsmi -->
+                                <TextBlock Grid.Row="1" 
+                                           Text="{Binding FileName}" 
+                                           FontSize="13" 
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextBrush}"
+                                           HorizontalAlignment="Center" 
+                                           TextAlignment="Center"
+                                           TextWrapping="Wrap"
+                                           MaxLines="2"
+                                           Margin="0,8,0,0"/>
+                                
+                                <!-- Boyut -->
+                                <TextBlock Grid.Row="2" 
+                                           Text="{Binding FileSize, Converter={StaticResource FileSizeConverter}}" 
+                                           FontSize="11" 
+                                           Foreground="{DynamicResource SubTextBrush}"
+                                           HorizontalAlignment="Center" 
+                                           IsVisible="{Binding !IsDirectory}"/>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <!-- Sürükle Bırak Bildirim Katmanı -->
+            <Border Name="DragOverlay" 
+                    Background="#CC000000" 
+                    BorderBrush="{DynamicResource AccentBrush}" 
+                    BorderThickness="3" 
+                    CornerRadius="12" 
+                    Margin="5" 
+                    IsVisible="False"
+                    ZIndex="1000">
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="15">
+                    <TextBlock Text="📥" FontSize="54" HorizontalAlignment="Center" Foreground="White"/>
+                    <TextBlock Text="Dosyaları Yüklemek İçin Buraya Bırakın" FontSize="20" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
+                    <TextBlock Text="Sanal sürücüye otomatik olarak yüklenecektir." FontSize="14" Foreground="#CCCCCC" HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </UserControl>

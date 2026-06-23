@@ -8,6 +8,8 @@ using IWindowService = MultiSych.Desktop.Services.IWindowService;
 using MultiSych.Services.Configuration;
 using MultiSych.Services.Interfaces;
 using MultiSych.Services.Security;
+using Avalonia.Threading;
+using ReactiveUI;
 
 namespace MultiSych.Desktop.ViewModels;
 
@@ -58,6 +60,15 @@ public class AIChatViewModel : ViewModelBase
         ToggleRecordingCommand = new RelayCommand(async _ => await ToggleRecordingAsync(), _ => !IsSending);
         ToggleAutoTtsCommand = new RelayCommand(_ => IsAutoTtsEnabled = !IsAutoTtsEnabled);
         ClearChatCommand = new RelayCommand(_ => ClearChat());
+
+        MessageBus.Current.Listen<string>("PartialTranscription")
+            .Subscribe(text =>
+            {
+                if (IsRecording)
+                {
+                    Dispatcher.UIThread.Post(() => CurrentMessage = text);
+                }
+            });
     }
 
     public ICommand SendMessageCommand { get; }
@@ -205,12 +216,14 @@ public class AIChatViewModel : ViewModelBase
 
                 _tempAudioFilePath = Path.Combine(Path.GetTempPath(), $"multisych_mic_{Guid.NewGuid()}.wav");
                 _audioRecordingService.StartRecording(_tempAudioFilePath);
+                _speechService.StartRealTimeTranscription(_tempAudioFilePath);
                 IsRecording = true;
                 SettingsStatus = "Recording... Click the stop button to transcribe.";
             }
             else
             {
                 SettingsStatus = "Transcribing audio locally...";
+                _speechService.StopRealTimeTranscription();
                 await _audioRecordingService.StopRecordingAsync();
                 IsRecording = false;
 
@@ -230,6 +243,7 @@ public class AIChatViewModel : ViewModelBase
         catch (Exception ex)
         {
             SettingsStatus = $"Audio operation failed: {ex.Message}";
+            _speechService.StopRealTimeTranscription();
             if (IsRecording) await _audioRecordingService.StopRecordingAsync();
             IsRecording = false;
         }

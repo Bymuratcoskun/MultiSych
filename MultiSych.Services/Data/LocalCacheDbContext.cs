@@ -14,6 +14,7 @@ public class LocalCacheDbContext : DbContext
     public DbSet<EmailMessageEntity> CachedEmails { get; set; } = null!;
     public DbSet<CalendarEventEntity> CachedEvents { get; set; } = null!;
     public DbSet<AppSecretEntity> AppSecrets { get; set; } = null!;
+    public DbSet<SyncQueueItemEntity> SyncQueueItems { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

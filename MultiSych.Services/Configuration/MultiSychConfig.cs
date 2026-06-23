@@ -24,6 +24,7 @@ public class AISettings
     public string? CopilotApiKey { get; set; }
     public string? GeminiApiKey { get; set; }
     public string? YandexAiApiKey { get; set; }
+    public string? YandexFolderId { get; set; }
     public string? DefaultProvider { get; set; } = "hybrid";
 }
 
@@ -44,6 +45,9 @@ public class SyncSettings
     public bool SyncEmailsEnabled { get; set; } = true;
     public bool SyncCalendarEnabled { get; set; } = true;
     public bool SyncStorageEnabled { get; set; } = true;
+    public string ConflictResolutionStrategy { get; set; } = "KeepBoth";
+    public int MaxUploadSpeedKbps { get; set; } = 0;
+    public int MaxDownloadSpeedKbps { get; set; } = 0;
 }
 
 public class DatabaseSettings

@@ -112,6 +112,15 @@ public partial class App : Application
                 }
             }
 
+            // Masaüstü açıldığında kullanıcının dil ve tema tercihlerini uygula
+            var userSettingsService = Program.ServiceProvider.GetRequiredService<IUserSettingsService>();
+            var userSettings = userSettingsService.Settings;
+            if (userSettings != null)
+            {
+                ApplyLanguage(userSettings.Language == "Türkçe" ? "tr-TR" : "en-US");
+                ApplyTheme(userSettings.Theme);
+            }
+
             // Ana pencereyi oluştur ve göster
             desktop.MainWindow = new MainWindow
             {
@@ -156,15 +165,51 @@ public partial class App : Application
             "Sade" => ThemeVariant.Light,
             _ => ThemeVariant.Dark
         };
+
+        if (themeName == "Retro")
+        {
+            Current.Resources["MainBgBrush"] = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#000000"));
+            Current.Resources["CardBgBrush"] = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#0B0B0B"));
+            Current.Resources["TextBrush"] = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#33FF33"));
+            Current.Resources["SubTextBrush"] = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#00FF00"));
+            Current.Resources["BorderBrush"] = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#33FF33"));
+            Current.Resources["SidebarBgBrush"] = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#050505"));
+            Current.Resources["AccentBrush"] = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#33FF33"));
+            Current.Resources["AccentTextBrush"] = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#000000"));
+            Current.Resources["SecondaryButtonBgBrush"] = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#111111"));
+        }
+        else if (themeName == "Modern")
+        {
+            Current.Resources["MainBgBrush"] = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#0F0F1A"));
+            Current.Resources["CardBgBrush"] = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#1A1A2E"));
+            Current.Resources["TextBrush"] = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#FFFFFF"));
+            Current.Resources["SubTextBrush"] = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#8B8B9E"));
+            Current.Resources["BorderBrush"] = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#2D2D44"));
+            Current.Resources["SidebarBgBrush"] = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#0A0A12"));
+            Current.Resources["AccentBrush"] = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#7F5AFA"));
+            Current.Resources["AccentTextBrush"] = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#FFFFFF"));
+            Current.Resources["SecondaryButtonBgBrush"] = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#252538"));
+        }
+        else
+        {
+            Current.Resources.Remove("MainBgBrush");
+            Current.Resources.Remove("CardBgBrush");
+            Current.Resources.Remove("TextBrush");
+            Current.Resources.Remove("SubTextBrush");
+            Current.Resources.Remove("BorderBrush");
+            Current.Resources.Remove("SidebarBgBrush");
+            Current.Resources.Remove("AccentBrush");
+            Current.Resources.Remove("AccentTextBrush");
+            Current.Resources.Remove("SecondaryButtonBgBrush");
+        }
     }
 
     public static void ApplyLanguage(string culture)
     {
-        // TODO: Implement resource dictionary switching for localization.
         if (Current == null) return;
 
-        // Örn: culture değişkeni "de-DE", "es-ES", "en-US" vb. değerler alabilir
-        var resourceUri = new Uri($"avares://MultiSych.Desktop/Assets/Languages/{culture}.axaml");
+        // Örn: culture değişkeni "tr-TR", "en-US" vb. değerler alabilir
+        var resourceUri = new Uri($"avares://MultiSych.Desktop/{culture}.axaml");
         
         try
         {
