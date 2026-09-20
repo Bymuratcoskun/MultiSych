@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using Gtk;
+using MultiSych.Desktop.Localization;
 using MultiSych.Desktop.ViewModels;
 using MultiSych.Services.Data;
 using MultiSych.Services.Models;
@@ -87,7 +88,7 @@ public class DocumentsView : Gtk.Box
     private Gtk.Widget BuildHeader()
     {
         var header = Gtk.Box.New(Gtk.Orientation.Horizontal, 10);
-        var title = Gtk.Label.New("Belgeler");
+        var title = Gtk.Label.New(Loc.Get("documents.title"));
         title.SetHalign(Gtk.Align.Start);
         title.SetHexpand(true);
         title.SetFontSize(24);
@@ -98,11 +99,11 @@ public class DocumentsView : Gtk.Box
         _stateLabel.AddCssClass("dim-label");
         header.Append(_stateLabel);
 
-        var createButton = Gtk.Button.NewWithLabel("Yeni Belge");
+        var createButton = Gtk.Button.NewWithLabel(Loc.Get("documents.create_button"));
         createButton.OnClicked += (_, _) => Execute(_viewModel?.ShowCreatePanelCommand, null);
         header.Append(createButton);
 
-        var refreshButton = Gtk.Button.NewWithLabel("Yenile 🔄");
+        var refreshButton = Gtk.Button.NewWithLabel(Loc.Get("documents.refresh_button"));
         refreshButton.OnClicked += (_, _) => Execute(_viewModel?.RefreshCommand, null);
         header.Append(refreshButton);
         return header;
@@ -134,7 +135,7 @@ public class DocumentsView : Gtk.Box
         filters.Append(_categoryDropDown);
 
         _searchEntry = Gtk.Entry.New();
-        _searchEntry.SetPlaceholderText("Belgelerde ara…");
+        _searchEntry.SetPlaceholderText(Loc.Get("documents.search_placeholder"));
         _searchEntry.SetHexpand(true);
         _searchEntry.OnNotify += (_, args) =>
         {
@@ -149,7 +150,7 @@ public class DocumentsView : Gtk.Box
     {
         var column = Gtk.Box.New(Gtk.Orientation.Vertical, 8);
         column.SetSizeRequest(330, 420);
-        var label = Gtk.Label.New("Dosya Listesi");
+        var label = Gtk.Label.New(Loc.Get("documents.file_list_title"));
         label.SetHalign(Gtk.Align.Start);
         label.SetFontWeight(Pango.Weight.Bold);
         column.Append(label);
@@ -175,7 +176,7 @@ public class DocumentsView : Gtk.Box
         details.SetHexpand(true);
         details.SetVexpand(true);
 
-        _selectedFileLabel = Gtk.Label.New("Bir belge seçin");
+        _selectedFileLabel = Gtk.Label.New(Loc.Get("documents.select_file_prompt"));
         _selectedFileLabel.SetHalign(Gtk.Align.Start);
         _selectedFileLabel.SetFontSize(18);
         _selectedFileLabel.SetFontWeight(Pango.Weight.Bold);
@@ -209,10 +210,10 @@ public class DocumentsView : Gtk.Box
         editorScroll.SetChild(_editorView);
         editorBox.Append(editorScroll);
         var editorButtons = Gtk.Box.New(Gtk.Orientation.Horizontal, 6);
-        _saveButton = Gtk.Button.NewWithLabel("Metni Kaydet");
+        _saveButton = Gtk.Button.NewWithLabel(Loc.Get("documents.save_text_button"));
         _saveButton.OnClicked += (_, _) => Execute(_viewModel?.SaveDocumentTextCommand, null);
         editorButtons.Append(_saveButton);
-        var cancelEditButton = Gtk.Button.NewWithLabel("Değişiklikleri Geri Al");
+        var cancelEditButton = Gtk.Button.NewWithLabel(Loc.Get("documents.revert_changes_button"));
         cancelEditButton.OnClicked += (_, _) => Execute(_viewModel?.CancelEditCommand, null);
         editorButtons.Append(cancelEditButton);
         editorBox.Append(editorButtons);
@@ -228,7 +229,7 @@ public class DocumentsView : Gtk.Box
         chatBox.Append(chatScroll);
         var chatControls = Gtk.Box.New(Gtk.Orientation.Horizontal, 6);
         _chatEntry = Gtk.Entry.New();
-        _chatEntry.SetPlaceholderText("Belge hakkında soru sorun…");
+        _chatEntry.SetPlaceholderText(Loc.Get("documents.chat.placeholder"));
         _chatEntry.SetHexpand(true);
         _chatEntry.OnNotify += (_, args) =>
         {
@@ -237,10 +238,10 @@ public class DocumentsView : Gtk.Box
         };
         _chatEntry.OnActivate += (_, _) => SendChat();
         chatControls.Append(_chatEntry);
-        _sendChatButton = Gtk.Button.NewWithLabel("Gönder");
+        _sendChatButton = Gtk.Button.NewWithLabel(Loc.Get("common.send"));
         _sendChatButton.OnClicked += (_, _) => SendChat();
         chatControls.Append(_sendChatButton);
-        var clearChatButton = Gtk.Button.NewWithLabel("Sohbeti Temizle");
+        var clearChatButton = Gtk.Button.NewWithLabel(Loc.Get("documents.chat.clear_button"));
         clearChatButton.OnClicked += (_, _) => Execute(_viewModel?.ClearChatCommand, null);
         chatControls.Append(clearChatButton);
         chatBox.Append(chatControls);
@@ -257,7 +258,7 @@ public class DocumentsView : Gtk.Box
         panel.SetMarginTop(10);
         panel.SetMarginBottom(10);
         _newFileNameEntry = Gtk.Entry.New();
-        _newFileNameEntry.SetPlaceholderText("Dosya adı");
+        _newFileNameEntry.SetPlaceholderText(Loc.Get("documents.create.name_placeholder"));
         _newFileNameEntry.SetHexpand(true);
         _newFileNameEntry.OnNotify += (_, args) =>
         {
@@ -276,11 +277,11 @@ public class DocumentsView : Gtk.Box
         };
         panel.Append(_newDocumentTypeDropDown);
 
-        _confirmCreateButton = Gtk.Button.NewWithLabel("Oluştur");
+        _confirmCreateButton = Gtk.Button.NewWithLabel(Loc.Get("documents.create.confirm_button"));
         _confirmCreateButton.AddCssClass("suggested-action");
         _confirmCreateButton.OnClicked += (_, _) => Execute(_viewModel?.ConfirmCreateCommand, null);
         panel.Append(_confirmCreateButton);
-        var cancelButton = Gtk.Button.NewWithLabel("İptal");
+        var cancelButton = Gtk.Button.NewWithLabel(Loc.Get("common.cancel"));
         cancelButton.OnClicked += (_, _) => Execute(_viewModel?.CancelCreateCommand, null);
         panel.Append(cancelButton);
         return panel;
@@ -296,7 +297,7 @@ public class DocumentsView : Gtk.Box
         _calendarList = Gtk.ListBox.New();
         _calendarList.SetSelectionMode(Gtk.SelectionMode.None);
         panel.Append(_calendarList);
-        var closeButton = Gtk.Button.NewWithLabel("Önerileri Kapat");
+        var closeButton = Gtk.Button.NewWithLabel(Loc.Get("documents.calendar.close_suggestions_button"));
         closeButton.SetHalign(Gtk.Align.End);
         closeButton.OnClicked += (_, _) => Execute(_viewModel?.CloseCalendarSuggestionsCommand, null);
         panel.Append(closeButton);
@@ -386,7 +387,7 @@ public class DocumentsView : Gtk.Box
             label.SetHalign(Gtk.Align.Start);
             label.SetHexpand(true);
             box.Append(label);
-            var addButton = Gtk.Button.NewWithLabel("Takvime Ekle");
+            var addButton = Gtk.Button.NewWithLabel(Loc.Get("documents.calendar.add_button"));
             addButton.OnClicked += (_, _) => Execute(_viewModel.AddEventSuggestionCommand, suggestion);
             box.Append(addButton);
             row.SetChild(box);

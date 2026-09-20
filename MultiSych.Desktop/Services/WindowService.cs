@@ -108,8 +108,11 @@ public class WindowService(IServiceProvider serviceProvider) : IWindowService
                 var app = MainWindow.Instance?.Application;
                 if (app != null)
                 {
-                    // application.SendNotification handles local shell dispatching
-                    // app.SendNotification(null, notification);
+                    app.SendNotification($"multisych-{Guid.NewGuid():N}", notification);
+                }
+                else
+                {
+                    Serilog.Log.Warning("ShowNotification: MainWindow.Instance.Application null, bildirim gönderilemedi");
                 }
             }
             catch (Exception ex)

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Gtk;
+using MultiSych.Desktop.Localization;
 using MultiSych.Desktop.ViewModels;
 using MultiSych.Services.Data;
 
@@ -45,11 +46,11 @@ public class FileExplorerView : Gtk.Box
         // Araç çubuğu
         var toolbar = Gtk.Box.New(Gtk.Orientation.Horizontal, 8);
 
-        var btnUp = Gtk.Button.NewWithLabel("⬆️ Üst Klasör");
+        var btnUp = Gtk.Button.NewWithLabel(Loc.Get("file_explorer.up_button"));
         btnUp.OnClicked += (_, _) => _viewModel?.NavigateUpCommand.Execute(null);
         toolbar.Append(btnUp);
 
-        var btnRefresh = Gtk.Button.NewWithLabel("🔄 Yenile");
+        var btnRefresh = Gtk.Button.NewWithLabel(Loc.Get("common.refresh_button"));
         btnRefresh.OnClicked += (_, _) => _viewModel?.RefreshCommand.Execute(null);
         toolbar.Append(btnRefresh);
 

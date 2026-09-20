@@ -175,7 +175,10 @@ public class EmailService : IEmailService
                 var summaries = await client.Inbox.FetchAsync(new[] { uids.First() }, MessageSummaryItems.Flags);
                 isRead = summaries?.FirstOrDefault()?.Flags?.HasFlag(MessageFlags.Seen) ?? false;
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "IMAP okundu bayrağı sorgulanamadı: {MessageId}", messageId);
+            }
 
             await client.DisconnectAsync(true);
             return new EmailMessage

@@ -173,7 +173,8 @@ namespace MultiSych.Services.Implementations
                             // Create empty placeholder file if it doesn't exist
                             if (!File.Exists(localPath))
                             {
-                                try { await File.WriteAllBytesAsync(localPath, Array.Empty<byte>()); } catch { }
+                                try { await File.WriteAllBytesAsync(localPath, Array.Empty<byte>()); }
+                                catch (Exception ex) { _logger.Warning(ex, "Linux mount yer tutucu dosyası oluşturulamadı: {Path}", localPath); }
                             }
                         }
                     }
@@ -320,7 +321,8 @@ namespace MultiSych.Services.Implementations
                         {
                             if (!File.Exists(localPath))
                             {
-                                try { await File.WriteAllBytesAsync(localPath, Array.Empty<byte>()); } catch { }
+                                try { await File.WriteAllBytesAsync(localPath, Array.Empty<byte>()); }
+                                catch (Exception ex) { _logger.Warning(ex, "Linux senkronizasyon yer tutucu dosyası oluşturulamadı: {Path}", localPath); }
                             }
                         }
                     }

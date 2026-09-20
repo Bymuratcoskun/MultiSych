@@ -1149,6 +1149,37 @@ namespace MultiSych.Services.Implementations
             await accountStore.SaveAccountAsync(credentials);
         }
 
-        public Task<List<CloudFile>> SearchFilesAsync(AccountCredentials credentials, string query) => throw new NotImplementedException();
+        /// <summary>
+        /// Yerel önbellekte (daha önce ListFilesAsync ile listelenmiş dosyalarda) dosya adına
+        /// göre arar. Sağlayıcının canlı arama API'sini ÇAĞIRMAZ — üç sağlayıcının (Google
+        /// Drive, OneDrive, Yandex Disk) ayrı arama uç noktalarını test edecek gerçek hesap
+        /// kimlik bilgisi bu ortamda yoktu, bu yüzden bilinçli olarak dürüst bir kapsamla
+        /// sınırlandı: yalnız daha önce görülmüş dosyaları arar, buluttaki HER dosyayı değil.
+        /// Bu sınır docs/YOL-HARITASI.md'de ayrıca not edilmiştir.
+        /// </summary>
+        public async Task<List<CloudFile>> SearchFilesAsync(AccountCredentials credentials, string query)
+        {
+            if (string.IsNullOrWhiteSpace(query))
+                return new List<CloudFile>();
+
+            using var scope = _scopeFactory.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<LocalCacheDbContext>();
+
+            var matches = await dbContext.CloudFiles
+                .Where(f => f.AccountId == credentials.AccountId && f.FileName.Contains(query))
+                .ToListAsync();
+
+            return matches.Select(e => new CloudFile
+            {
+                AccountId = e.AccountId,
+                FileId = e.FileId,
+                FileName = e.FileName,
+                MimeType = e.MimeType,
+                FileSize = e.FileSize,
+                IsDirectory = e.IsDirectory,
+                Provider = e.Provider,
+                WebEditUrl = e.WebEditUrl
+            }).ToList();
+        }
     }
 }

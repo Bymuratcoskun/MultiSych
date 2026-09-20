@@ -1,5 +1,6 @@
 using System;
 using Gtk;
+using MultiSych.Desktop.Localization;
 using MultiSych.Desktop.ViewModels;
 
 namespace MultiSych.Desktop.Views;
@@ -16,7 +17,7 @@ public class AddAccountWindow : Gtk.Window
 
     public AddAccountWindow(Gtk.Window parent)
     {
-        SetTitle("Yeni Hesap Ekle");
+        SetTitle(Loc.Get("add_account.window_title"));
         SetDefaultSize(400, 250);
         SetTransientFor(parent);
         SetModal(true);
@@ -32,30 +33,30 @@ public class AddAccountWindow : Gtk.Window
         box.SetMarginTop(20);
         box.SetMarginBottom(20);
 
-        var title = Gtk.Label.New("Bulut Hesabı Ekle");
+        var title = Gtk.Label.New(Loc.Get("add_account.title"));
         title.SetFontSize(16);
         title.SetFontWeight(Pango.Weight.Bold);
         box.Append(title);
 
-        var subtitle = Gtk.Label.New("Eklemek istediğiniz bulut sağlayıcısını seçin:");
+        var subtitle = Gtk.Label.New(Loc.Get("add_account.provider_prompt"));
         subtitle.SetHalign(Gtk.Align.Start);
         box.Append(subtitle);
 
-        var btnGoogle = Gtk.Button.NewWithLabel("🤖 Google Drive / Gmail");
+        var btnGoogle = Gtk.Button.NewWithLabel(Loc.Get("add_account.google_button"));
         btnGoogle.OnClicked += (s, e) => {
             _viewModel?.AddGoogleCommand.Execute(null);
             this.Close();
         };
         box.Append(btnGoogle);
 
-        var btnMicrosoft = Gtk.Button.NewWithLabel("✨ Microsoft OneDrive / Outlook");
+        var btnMicrosoft = Gtk.Button.NewWithLabel(Loc.Get("add_account.microsoft_button"));
         btnMicrosoft.OnClicked += (s, e) => {
             _viewModel?.AddMicrosoftCommand.Execute(null);
             this.Close();
         };
         box.Append(btnMicrosoft);
 
-        var btnYandex = Gtk.Button.NewWithLabel("🧠 Yandex Disk / Mail");
+        var btnYandex = Gtk.Button.NewWithLabel(Loc.Get("add_account.yandex_button"));
         btnYandex.OnClicked += (s, e) => {
             _viewModel?.AddYandexCommand.Execute(null);
             this.Close();

@@ -1,5 +1,6 @@
 using System;
 using Gtk;
+using MultiSych.Desktop.Localization;
 using MultiSych.Desktop.ViewModels;
 
 namespace MultiSych.Desktop.Views;
@@ -18,7 +19,7 @@ public class NewEmailWindow : Gtk.Window
     {
         _viewModel = viewModel;
         
-        SetTitle("Yeni E-Posta Oluştur");
+        SetTitle(Loc.Get("compose.window_title"));
         SetDefaultSize(600, 500);
         SetTransientFor(parent);
         SetModal(true);
@@ -36,7 +37,7 @@ public class NewEmailWindow : Gtk.Window
 
         // To address
         var toBox = Gtk.Box.New(Gtk.Orientation.Horizontal, 10);
-        var toLabel = Gtk.Label.New("Kime:");
+        var toLabel = Gtk.Label.New(Loc.Get("compose.to_label"));
         toLabel.SetSizeRequest(60, -1);
         var toEntry = Gtk.Entry.New();
         toEntry.SetHexpand(true);
@@ -50,7 +51,7 @@ public class NewEmailWindow : Gtk.Window
 
         // Subject
         var subBox = Gtk.Box.New(Gtk.Orientation.Horizontal, 10);
-        var subLabel = Gtk.Label.New("Konu:");
+        var subLabel = Gtk.Label.New(Loc.Get("compose.subject_label"));
         subLabel.SetSizeRequest(60, -1);
         var subEntry = Gtk.Entry.New();
         subEntry.SetHexpand(true);
@@ -77,7 +78,7 @@ public class NewEmailWindow : Gtk.Window
 
         // Buttons
         var btnBox = Gtk.Box.New(Gtk.Orientation.Horizontal, 10);
-        var btnSend = Gtk.Button.NewWithLabel("Gönder ✉️");
+        var btnSend = Gtk.Button.NewWithLabel(Loc.Get("compose.send_button"));
         btnSend.AddCssClass("suggested-action");
         btnSend.OnClicked += (s, e) =>
         {
@@ -85,7 +86,7 @@ public class NewEmailWindow : Gtk.Window
             this.Close();
         };
 
-        var btnCancel = Gtk.Button.NewWithLabel("İptal");
+        var btnCancel = Gtk.Button.NewWithLabel(Loc.Get("common.cancel"));
         btnCancel.OnClicked += (s, e) => this.Close();
 
         btnBox.Append(btnSend);

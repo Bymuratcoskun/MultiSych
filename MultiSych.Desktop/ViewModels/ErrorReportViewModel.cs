@@ -33,7 +33,7 @@ public class ErrorReportViewModel : ViewModelBase
     {
         // GitHub URL'sine başlık ve açıklamayı (issue gövdesini) query parametresi olarak ekliyoruz
         var body = $"**Açıklama / Description:**\n{IssueDescription}\n\n**Uygulama Bilgileri:**\nMultiSych Desktop v1.0\nOS: {RuntimeInformation.OSDescription}";
-        var url = $"https://github.com/yourusername/MultiSych/issues/new?title={Uri.EscapeDataString(IssueTitle)}&body={Uri.EscapeDataString(body)}";
+        var url = $"https://github.com/Bymuratcoskun/multisych/issues/new?title={Uri.EscapeDataString(IssueTitle)}&body={Uri.EscapeDataString(body)}";
         
         try
         {

@@ -4,7 +4,7 @@ pkgver=1.0.0
 pkgrel=1
 pkgdesc="Multi-Account Cloud Synchronization Platform with AI support"
 arch=('x86_64')
-url="https://github.com/yourusername/MultiSych"
+url="https://github.com/Bymuratcoskun/multisych"
 license=('MIT')
 depends=(
     # dotnet-runtime-10.0 KASITLI OLARAK burada YOK: build() self-contained

@@ -22,7 +22,6 @@ public sealed class DocumentAnalyzerViewModel : ViewModelBase
     private string _emailSubject = string.Empty;
     private string _emailBody = string.Empty;
     private string _emailAnalysisResult = string.Empty;
-    private string _exportPassword = string.Empty;
 
     public DocumentAnalyzerViewModel(IAIService aiService, IWindowService windowService)
     {
@@ -67,12 +66,6 @@ public sealed class DocumentAnalyzerViewModel : ViewModelBase
     {
         get => _selectedProvider;
         set => SetProperty(ref _selectedProvider, value);
-    }
-
-    public string ExportPassword
-    {
-        get => _exportPassword;
-        set => SetProperty(ref _exportPassword, value);
     }
 
     public bool IsAnalyzing

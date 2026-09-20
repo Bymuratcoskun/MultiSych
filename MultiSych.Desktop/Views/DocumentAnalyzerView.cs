@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using Gtk;
+using MultiSych.Desktop.Localization;
 using MultiSych.Desktop.ViewModels;
 
 namespace MultiSych.Desktop.Views;
@@ -15,7 +16,6 @@ public class DocumentAnalyzerView : Gtk.Box
     private Gtk.Entry? _emailSubject;
     private Gtk.TextView? _emailBody;
     private Gtk.TextView? _emailResult;
-    private Gtk.PasswordEntry? _exportPassword;
     private Gtk.Label? _statusLabel;
     private Gtk.Button? _summarizeButton;
     private Gtk.Button? _analyzeEmailButton;
@@ -46,7 +46,7 @@ public class DocumentAnalyzerView : Gtk.Box
         content.SetMarginTop(20);
         content.SetMarginBottom(20);
 
-        var title = Gtk.Label.New("Belge ve E-Posta Analizi (AI)");
+        var title = Gtk.Label.New(Loc.Get("document_analyzer.title"));
         title.SetHalign(Gtk.Align.Start);
         title.SetFontSize(24);
         title.SetFontWeight(Pango.Weight.Bold);
@@ -63,11 +63,11 @@ public class DocumentAnalyzerView : Gtk.Box
         };
         controls.Append(_providerDropDown);
 
-        var loadButton = Gtk.Button.NewWithLabel("Dosya Yükle");
+        var loadButton = Gtk.Button.NewWithLabel(Loc.Get("document_analyzer.load_file_button"));
         loadButton.OnClicked += (_, _) => Execute(_viewModel?.LoadFileCommand);
         controls.Append(loadButton);
 
-        _summarizeButton = Gtk.Button.NewWithLabel("Özetle");
+        _summarizeButton = Gtk.Button.NewWithLabel(Loc.Get("document_analyzer.summarize_button"));
         _summarizeButton.AddCssClass("suggested-action");
         _summarizeButton.OnClicked += (_, _) => Execute(_viewModel?.SummarizeCommand);
         controls.Append(_summarizeButton);
@@ -87,27 +87,12 @@ public class DocumentAnalyzerView : Gtk.Box
         };
         content.Append(CreateFrame("Belge İçeriği", _documentContent));
 
-        var exportRow = Gtk.Box.New(Gtk.Orientation.Horizontal, 8);
-        var exportLabel = Gtk.Label.New("Dışa aktarma parolası:");
-        exportLabel.SetHalign(Gtk.Align.Start);
-        exportRow.Append(exportLabel);
-        _exportPassword = Gtk.PasswordEntry.New();
-        _exportPassword.SetShowPeekIcon(true);
-        _exportPassword.SetHexpand(true);
-        _exportPassword.OnNotify += (_, args) =>
-        {
-            if (args.Pspec.GetName() == "text" && _viewModel != null)
-                _viewModel.ExportPassword = _exportPassword.GetText();
-        };
-        exportRow.Append(_exportPassword);
-        content.Append(exportRow);
-
         _summaryResult = CreateTextView(editable: false, minHeight: 150);
         content.Append(CreateFrame("Özet Sonucu", _summaryResult));
 
         var emailMeta = Gtk.Box.New(Gtk.Orientation.Horizontal, 10);
         _emailFrom = Gtk.Entry.New();
-        _emailFrom.SetPlaceholderText("Kimden");
+        _emailFrom.SetPlaceholderText(Loc.Get("document_analyzer.email_from_placeholder"));
         _emailFrom.SetHexpand(true);
         _emailFrom.OnNotify += (_, args) =>
         {
@@ -116,7 +101,7 @@ public class DocumentAnalyzerView : Gtk.Box
         };
         emailMeta.Append(_emailFrom);
         _emailSubject = Gtk.Entry.New();
-        _emailSubject.SetPlaceholderText("Konu");
+        _emailSubject.SetPlaceholderText(Loc.Get("document_analyzer.email_subject_placeholder"));
         _emailSubject.SetHexpand(true);
         _emailSubject.OnNotify += (_, args) =>
         {
@@ -134,7 +119,7 @@ public class DocumentAnalyzerView : Gtk.Box
         };
         content.Append(CreateFrame("E-Posta İçeriği", _emailBody));
 
-        _analyzeEmailButton = Gtk.Button.NewWithLabel("E-Postayı Analiz Et");
+        _analyzeEmailButton = Gtk.Button.NewWithLabel(Loc.Get("document_analyzer.analyze_email_button"));
         _analyzeEmailButton.AddCssClass("suggested-action");
         _analyzeEmailButton.SetHalign(Gtk.Align.End);
         _analyzeEmailButton.OnClicked += (_, _) => Execute(_viewModel?.AnalyzeEmailCommand);

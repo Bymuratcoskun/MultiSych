@@ -57,7 +57,7 @@ public class SettingsViewModel : ViewModelBase
         SelectAccentColorCommand = new RelayCommand(hex => { if (hex is string h) SelectedAccentColor = h; });
 
         ToggleLogPauseCommand = new RelayCommand(_ => IsLogPaused = !IsLogPaused);
-        ClearLogCommand = new RelayCommand(_ => LiveLogs = "Loglar temizlendi.");
+        ClearLogCommand = new RelayCommand(_ => ClearLog());
         BackupDatabaseCommand = new RelayCommand(async _ => await BackupDatabaseAsync());
         RestoreDatabaseCommand = new RelayCommand(_ => RestoreDatabase());
         ClearCacheCommand = new RelayCommand(async _ => await ClearCacheAsync());
@@ -272,7 +272,7 @@ public class SettingsViewModel : ViewModelBase
             await dbContext.SaveChangesAsync();
 
             // İndirilen dosyaların bulunduğu fiziksel klasörü boşalt
-            var drivesPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MultiSych", "Drives");
+            var drivesPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "MultiSych_Drives");
             if (Directory.Exists(drivesPath))
             {
                 Directory.Delete(drivesPath, true);
@@ -326,7 +326,7 @@ public class SettingsViewModel : ViewModelBase
     {
         try
         {
-            var dbPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MultiSych", "Database", "localcache.db");
+            var dbPath = _config.Database?.DatabasePath ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MultiSych", "multisych.db");
             var backupFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "MultiSych_Backups");
             
             if (!Directory.Exists(backupFolder))
@@ -349,6 +349,26 @@ public class SettingsViewModel : ViewModelBase
         catch (Exception ex)
         {
             LiveLogs = $"[HATA] Geri yükleme başarısız: {ex.Message}\nNot: Arka planda senkronizasyon çalışıyorsa dosya kilitli olabilir.";
+        }
+    }
+
+    private void ClearLog()
+    {
+        try
+        {
+            var logsFolder = Path.Combine(Directory.GetCurrentDirectory(), "logs");
+            var latestLog = Directory.Exists(logsFolder)
+                ? Directory.GetFiles(logsFolder, "multisych-*.txt").OrderByDescending(f => f).FirstOrDefault()
+                : null;
+            if (latestLog != null)
+            {
+                using var fs = new FileStream(latestLog, FileMode.Truncate, FileAccess.Write, FileShare.ReadWrite);
+            }
+            LiveLogs = "Loglar temizlendi.";
+        }
+        catch (Exception ex)
+        {
+            LiveLogs = $"[HATA] Loglar temizlenemedi: {ex.Message}";
         }
     }
 

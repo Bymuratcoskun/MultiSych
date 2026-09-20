@@ -54,7 +54,10 @@ namespace MultiSych.Services.Implementations
                         }
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    Serilog.Log.Warning(ex, "Linux pil güç durumu okunamadı");
+                }
                 return false;
             }
             else if (OperatingSystem.IsMacOS())
@@ -75,7 +78,10 @@ namespace MultiSych.Services.Implementations
                         return output.Contains("Battery Power") || output.Contains("drawing from 'Battery Power'");
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    Serilog.Log.Warning(ex, "macOS pil güç durumu okunamadı");
+                }
             }
             return false;
         }
@@ -112,7 +118,10 @@ namespace MultiSych.Services.Implementations
                         }
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    Serilog.Log.Warning(ex, "Linux pil yüzdesi okunamadı");
+                }
                 return 100;
             }
             else if (OperatingSystem.IsMacOS())
@@ -138,7 +147,10 @@ namespace MultiSych.Services.Implementations
                         }
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    Serilog.Log.Warning(ex, "macOS pil yüzdesi okunamadı");
+                }
             }
             return 100;
         }

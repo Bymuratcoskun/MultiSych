@@ -97,7 +97,10 @@ public class AuthViewModel : ViewModelBase
                 if (GenerateTotp(secret, timeStep + i) == code) return true;
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "TOTP gizli anahtarı çözümlenemedi");
+        }
         return false;
     }
 

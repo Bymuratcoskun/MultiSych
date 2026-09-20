@@ -538,9 +538,8 @@ namespace MultiSych.Desktop.ViewModels
                         }
                         catch (Exception ex)
                         {
-                            _logger.Error(ex, "Failed to download file for local editing, creating empty file instead.");
-                            try { await File.WriteAllBytesAsync(localFilePath, Array.Empty<byte>()); } catch { }
-                            LaunchLocalEditor(localFilePath);
+                            _logger.Error(ex, "Failed to download file for local editing.");
+                            _appStatusService.PostUpdate($"{file.FileName} indirilemedi, düzenleyici açılmadı: {ex.Message}", isSyncing: false);
                         }
                     });
                 }

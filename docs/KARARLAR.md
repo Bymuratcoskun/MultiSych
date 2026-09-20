@@ -332,7 +332,256 @@ arayüzü kullanan sınıfın İÇİNDE arayüzün DIŞINDA başka bir yan etkil
 
 ---
 
-## K10 — LOKALİZASYON MEKANİZMASI — BEKLİYOR
+## K10 — FAZ 3: BİLDİRİMLER GERÇEK ÇALIŞIYOR · 2026-09-20
 
-**Durum:** Karar henüz verilmedi. FAZ 4'te JSON tabanlı kaynak sözlüğü
-mü yoksa `gettext` mi kullanılacağı burada kayda geçirilecek.
+**Karar:** `WindowService.ShowNotification` artık gerçek
+`Gio.Application.SendNotification` çağırıyor (her çağrıda benzersiz
+`multisych-<guid>` kimliğiyle, önceki bildirimin üstüne yazılmasın diye).
+Uygulama örneği yoksa sessiz geçmiyor, warning logluyor.
+
+**Uygulayan:** Codex, iş paketiyle (`docs/IS-PAKETI-bildirim-duzeltmesi.md`).
+
+**✅ KABUL EDİLDİ.** Kod incelendi (iş paketindeki API/örnekle birebir
+uyumlu), `dotnet build` 0 hata, `dotnet test` 78/78. **Kanıt:**
+`tools/kapilar` → **7 kapının 7'si de yeşil** — bu projede ilk kez tam
+yeşil. Gerçek masaüstünde GNOME bildirimi görme testi doğal kullanımda
+teyit edilecek (statik/gate düzeyinde kanıt yeterli sayıldı, davranışsal
+risk düşük — güvenlik kapısının aksine burada API imzası reflection ile
+önceden doğrulanmıştı).
+
+---
+
+## K11 — LOKALİZASYON MEKANİZMASI: JSON KARAR VERİLDİ, ALTYAPI KURULDU · 2026-09-20
+
+**Karar:** `gettext` değil, JSON tabanlı kaynak sözlüğü. Proje zaten
+JSON/CSV tabanlı veri katmanı kullanıyor (`MultiSych.Services/Data`),
+`gettext` ayrı bir araç zinciri (`msgfmt`/`.po`/`.mo`) getirirdi —
+gereksiz bağımlılık.
+
+**Ek bulgu (sıfırdan kurmadık):** `SettingsViewModel.SelectedLanguage`
+zaten "English"/"Türkçe" seçici sunuyor, `UserSettings.Language`'a
+kaydediyor, `App.ApplyLanguage(...)` çağırıyordu — ama `AppShim.cs`'teki
+`ApplyLanguage` **tamamen boş bir stub**: `// Stub for localization
+settings`. Arayüz zaten vardı, yalnız arkası boştu.
+
+**Mimari karar — dil değişimi ANLIK DEĞİL:** GTK View'ları metinlerini
+yalnız kendi inşa edildikleri anda okuyor (statik widget oluşturma,
+canlı yeniden bağlama altyapısı yok). Bunu her View için kurmak büyük
+bir yeniden yapılanma olurdu. Bunun yerine: `Loc.SetLanguage(...)`
+uygulama açılışında, İLK View inşa edilmeden ÖNCE bir kez çağrılıyor
+(`Program.cs`, `userSettingsService.LoadAsync()`'ten hemen sonra).
+Kullanıcı Ayarlar'dan dili değiştirirse etkisi **bir sonraki
+başlatmada** görünür. Bu K8'in dersini uyguluyor: "anında değişti"
+gibi yanlış bir izlenim vermek yerine gerçek davranış budur.
+
+**Kurulan altyapı (Claude Code, kapı/şema yazımı kendi işi):**
+- `MultiSych.Desktop/Localization/Loc.cs` — `SetLanguage(langCode)` +
+  `Get(key)`. Eksik anahtar **çökme sebebi değil** ama sessiz de
+  geçilmiyor: bir kez loglanıyor, ekranda anahtarın kendisi görünüyor
+  (örn. "app.title") — bariz bir eksik-çeviri sinyali.
+- `Localization/tr.json`, `Localization/en.json` — şimdilik yalnız
+  1 örnek anahtar (`app.title`), csproj'da `CopyToOutputDirectory`.
+- `tools/lokalizasyon-testi.sh` — iki kontrol: (1) tr.json/en.json
+  çapraz anahtar kapsamı (biri diğerinde eksikse kırmızı), (2) View
+  dosyalarında kalan sabit metin sayısı için bir TAVAN (bugün ölçülen
+  gerçek sayı: **99**, `grep` ile doğrulandı — uydurma değil). İki
+  negatif kontrolle de sınandı: eşiği düşürünce ve bir dilden anahtar
+  silince kapı doğru şekilde kırmızı çıktı.
+
+**Kanıt:** `tools/kapilar` → **8 kapının 8'i de yeşil**.
+
+**✅ FAZ 4 TAMAMEN KAPANDI — 2026-09-20.**
+
+1. Antigravity envanter çıkardı (`docs/LOKALIZASYON-ENVANTERI.md`) —
+   99 kullanım, 93 benzersiz anahtar. Claude Code 3 örnek üzerinden
+   spot-check yaptı, birebir doğru çıktı.
+2. Claude Code, 4 anahtar için ("zaten İngilizce" görünen literaller)
+   gerçek Türkçe çeviri kararını verdi (`AI ASİSTANLARI`, `RAM
+   Kullanımı:`, `Hesaplanıyor...`, `Hazır.`) — envanterin "TR" sütununu
+   bu 4'ü için bilerek geçersiz kıldı.
+3. Codex, iş paketiyle (`docs/IS-PAKETI-lokalizasyon-tasima.md`) 93
+   anahtarı `tr.json`/`en.json`'a işledi, 16 View dosyasındaki 99
+   literal kullanımı `Loc.Get(key)`'e taşıdı.
+4. Claude Code kabul etti: `dotnet build` 0 hata, `dotnet test` 78/78,
+   iki dosyada (`DocumentsView.cs`, `AccountsView.cs`) spot-check
+   yapıldı, 4 özel çeviri `tr.json`'da doğrulandı.
+5. Claude Code `tools/lokalizasyon-testi.sh`'in `BASELINE`'ını 99'dan
+   **0**'a düşürdü — artık bir tavan değil sıfır tolerans, yeni hiçbir
+   View sabit metin içeremez.
+
+**Kanıt:** `tools/kapilar` → **8 kapının 8'i de yeşil**,
+`lokalizasyon-testi.sh` → `anahtar=93 sabit_metin=0 taban=0`.
+
+**Düzeltme (aynı gün, operatör gerçek kullanımda buldu):** Operatör
+"varsayılan İngilizce ama ekranda hâlâ Türkçe kısımlar var" dedi.
+Kök sebep: `MainWindow.cs`'teki kenar çubuğu etiketleri
+(`AddNavigationRow("Dashboard", "📊 Panel")` gibi) doğrudan
+`Label.New("...")` DEĞİL, bir yardımcı metoda literal geçiyordu — hem
+Antigravity'nin envanteri hem `lokalizasyon-testi.sh`'in ilk deseni bu
+DOLAYLI çağrıyı kaçırmıştı. 11 nav etiketi `nav.*` anahtarlarıyla
+`Loc.Get()`'e taşındı, kapıya `AddNavigationRow` için hedefli ikinci bir
+desen eklendi (11 gerçek anahtar daha: toplam 104). Ayrıca script'e
+BİLİNÇLİ bir kapsam dışı bırakma notu eklendi: `$"...gömülü metin..."`
+biçimindeki interpolasyonlar (örn. `$"🚧 Bu ekran yakında ({vmName})"`)
+şu an kapsam dışı — format-string bazlı ayrı bir lokalizasyon deseni
+gerektiriyorlar, bu FAZ'ın konusu değil, ayrı bir gelecek iş.
+**Ders:** "bir kusur kapıdan geçtiyse kapı eksiktir" — kapı yalnız
+DOĞRUDAN literal çağrıları arıyordu, dolaylı/sarmalanmış çağrıları
+göremiyordu. Kanıt: `tools/kapilar` yeniden 8/8 yeşil,
+`anahtar=104 sabit_metin=0`.
+
+---
+
+## K12 — ANTIGRAVITY'NİN 3 KRİTİK VERİ KAYBI BULGUSU DÜZELTİLDİ · 2026-09-20
+
+**Bulgu:** `docs/RAPOR-sahte-basari-taramasi.md` (Antigravity, 29 bulgu)
+içinden 3'ü Claude Code tarafından kod satırlarına bakılarak bağımsız
+doğrulandı: (1) "Yedekten Geri Yükle" yanlış dosyaya (`Database/localcache.db`)
+yazıyordu, gerçek DB `multisych.db`'ydi — "BAŞARILI" diyip hiçbir şey
+değiştirmiyordu. (2) "Önbelleği Temizle" yanlış klasörü
+(`ApplicationData/MultiSych/Drives`) siliyordu, gerçek dosyalar
+`~/MultiSych_Drives`'taydı — DB indeksini siliyor, diskteki gerçek
+dosyaları yetim bırakıyordu. (3) `DocumentsViewModel.EditLocally`
+indirme hatasında sessizce 0 bayt dosya yazıp editörü açıyordu —
+kullanıcı düzenleyip kaydederse buluttaki gerçek dosyanın üzerine boş
+içerik yazılma riski.
+
+**Uygulayan:** Codex, iş paketiyle (`docs/IS-PAKETI-veri-kaybi-riskleri.md`).
+
+**✅ KABUL EDİLDİ.** Üçü de kod incelemesiyle doğrulandı — düzeltmeler
+`Program.cs`'te zaten kanıtlı çalışan AYNI yol formülünü kullanıyor
+(icat edilmiş yeni mantık değil). `dotnet build` 0 hata, `dotnet test`
+78/78, `tools/kapilar` 8/8 yeşil. Gerçek yedekle→geri yükle döngüsünün
+elle denenmesi operatöre kaldı (düşük risk, yüksek güven — aynı formül
+başka yerde zaten çalışıyor).
+
+**Açık kalan:** Antigravity'nin raporundaki diğer 26 bulgu henüz
+triyaj edilmedi. Öne çıkanlar: `ErrorReportViewModel.cs:36`'daki
+yer tutucu GitHub URL'i (`yourusername`), `CalendarViewModel.cs:75`'teki
+Avalonia `Dispatcher.UIThread` kalıntısı (GTK runtime'da NRE riski).
+Ayrı bir triyaj oturumu gerekiyor.
+
+---
+
+## K13 — 26 KALAN "SAHTE BAŞARI" BULGUSU TRİYAJ EDİLDİ · 2026-09-20
+
+**Karar:** `docs/RAPOR-sahte-basari-taramasi.md`'deki 26 kalan bulgu 5
+kademeye ayrıldı, operatör onayladı:
+
+1. **Kademe 1 (şimdi düzeltiliyor, 4 bulgu):** 2.1 (yourusername URL),
+   4.2 (Logları Temizle hiçbir şey silmiyor), 4.4 (Loglar menüsü GitHub
+   formu açıyor), 1.2 (dosya önbellekleme hatası sessiz) — hepsi
+   kullanıcıyı doğrudan yanıltan ya da veri bütünlüğüne değen gerçek
+   sorunlar. İş paketi: `docs/IS-PAKETI-sahte-basari-kademe1.md`.
+2. **Kademe 2 (ERTELENDİ, CalendarViewModel'e bağlı):** 4.7 (Avalonia
+   `Dispatcher.UIThread` kalıntısı, NRE riski) ve 3.5 (sessiz boş liste
+   dönüşü) — ikisi de `CalendarViewModel`'de, K5 kararıyla zaten nav'a
+   bağlanmamış (erişilemez). CalendarViewModel tamamlanma işiyle
+   BİRLİKTE ele alınacak, ayrı değil.
+3. **Kademe 3 (zaten planlı):** 3.6 (`SearchFilesAsync`
+   NotImplementedException) — `tools/eksiklik-testi.sh` zaten takip
+   ediyor, FAZ 5'in konusu.
+4. **Kademe 4 (düşük öncelik, toplu iş):** 1.3-1.10 (8 bulgu) — düşük
+   etkili sessiz hatalar (e-posta okundu-bayrağı, ses kaydı/sentezi
+   temizliği, mount'ta boş dosya oluşturma). Acil değil.
+5. **Kademe 5 (ölçülemez/düşük risk):** 3.1-3.4 (Dokan sahte-başarı
+   API'leri, Windows-only, bu makinede test edilemiyor), 2.2 (sabit
+   disk alanı, Windows-only), 2.4/2.5/2.6 (ölü dosya/property temizliği,
+   sıfır risk).
+
+**Gerekçe:** Sınırlı efor, en yüksek etkiye önce el atma. Kademe 2'yi
+ayrı ele almak "bugün çalışmayan koda bugün yama yapmak" olurdu —
+CalendarViewModel gerçekten tamamlandığında bu iki bulgu zaten o işin
+İÇİNDE karşımıza çıkacak.
+
+---
+
+## K14 — SAHTE BAŞARI KADEME 1 KABUL EDİLDİ · 2026-09-20
+
+**Uygulayan:** Codex, iş paketiyle (`docs/IS-PAKETI-sahte-basari-kademe1.md`).
+
+**✅ KABUL EDİLDİ.** 4 bulgu düzeltildi: gerçek GitHub URL'i
+(`ErrorReportViewModel.cs` + `PKGBUILD`), log temizleme artık dosyayı
+gerçekten kısaltıyor, "Loglar" nav etiketi "🐞 Hata Bildir"e çevrilip
+gerçek işleviyle tutarlı hale getirildi, dosya önbellekleme hatası
+artık sessizce yutulmuyor loglanıyor. Kod incelemesiyle doğrulandı.
+
+**Kanıt:** `dotnet build` 0 hata, `dotnet test` 78/78, `tools/kapilar`
+8/8 yeşil, `lokalizasyon-testi.sh` anahtar=104 (değişmedi, yalnız
+`nav.logs` DEĞERİ güncellendi).
+
+**Kalan (Kademe 2-5, ertelendi):** 22 bulgu — Kademe 2 CalendarViewModel
+işiyle birlikte, Kademe 3 zaten FAZ 5'te, Kademe 4-5 düşük öncelik.
+
+---
+
+## K15 — KADEME 2 VE 3 KAPANDI (Claude Code bizzat yaptı) · 2026-09-20
+
+**Kademe 2:**
+- **4.7 YANLIŞ ALARM olarak düzeltildi:** Antigravity `CalendarViewModel.cs`'teki
+  `Dispatcher.UIThread.Post` çağrısının Avalonia runtime'ı yokken NRE
+  üreteceğini düşünmüştü. Doğrulandı: proje bu ismi `Services/DispatcherShim.cs`
+  ile KENDİSİ dolduruyor (`namespace Avalonia.Threading { public static class
+  Dispatcher ... }`, GLib tabanlı gerçek çalışan bir uygulama) — tıpkı zaten
+  üretimde çalışan `MainWindowViewModel.cs`'in aynı deseni kullanması gibi.
+  Gerçek bir hata değil, düzeltme yapılmadı.
+- **3.5 düzeltildi:** `CloudCalendarService.GetEventsAsync`, kardeş
+  metodların hepsi (`GetEventAsync`, `CreateEventAsync`, `UpdateEventAsync`,
+  `DeleteEventAsync`) desteklenmeyen sağlayıcı için `NotSupportedException`
+  fırlatırken, sessizce boş liste dönüyordu. Tek satır düzeltildi, tutarlı
+  hale getirildi.
+
+**Kademe 3:**
+- **3.6 düzeltildi:** `CloudStorageService.SearchFilesAsync` artık gerçek
+  bir uygulama — yerel önbellekte (`CloudFiles` tablosu) dosya adına göre
+  arıyor. **Dürüst sınır:** üç sağlayıcının (Google Drive, OneDrive, Yandex
+  Disk) canlı arama API'lerini ÇAĞIRMIYOR — bu ortamda test edecek gerçek
+  hesap kimlik bilgisi yoktu, bilinçli olarak yalnız daha önce görülmüş
+  (listelenmiş) dosyalarda arıyor. `MultiSych.Tests/CloudStorageServiceTests.cs`
+  (3 test, gerçek davranış: eşleşen/eşleşmeyen/boş sorgu) eklendi.
+  `tools/eksiklik-testi.sh` BASELINE'ı 1'den 0'a düşürüldü.
+
+**Kanıt:** `dotnet build` 0 hata, `dotnet test` 81/81 (3 yeni test),
+`tools/kapilar` 8/8 yeşil.
+
+---
+
+## K16 — KADEME 4-5 İŞ PAKETİ DAĞITILDI · 2026-09-20
+
+**Karar:** Kalan 18 bulgu (8 sessiz catch + 3 ölü dosya + 1 yanıltıcı
+"dışa aktarma parolası" alanı + 4 Dokan sahte-başarı API'si + 1 sabit
+disk alanı) tek bir Codex iş paketinde toplandı
+(`docs/IS-PAKETI-sahte-basari-kademe4-5.md`).
+
+**Ek bulgu (Claude Code, Antigravity'nin 2.6'sını derinleştirdi):**
+`DocumentAnalyzerViewModel.ExportPassword` yalnız "ölü property" değil
+— `DocumentAnalyzerView.cs:91-102` kullanıcıya GERÇEK bir parola giriş
+kutusu gösteriyor, ama hiçbir "Dışa Aktar" komutu yok, hiçbir yerde
+okunmuyor. Kullanıcı parola girip koruma sağladığını sanıyor. Karar:
+gerçek özellik yok, alan tamamen kaldırılacak (yarım özelliği göstermek
+göstermemekten kötü).
+
+**Dokan (3.1-3.4) ve sabit disk alanı (2.2) için karar:** davranış
+DEĞİŞTİRİLMEYECEK (Windows-only, bu makinede ölçülemez, sanal sürücü
+için kilit/ACL kavramının zaten anlamlı bir karşılığı yok) — yalnız
+dürüst açıklayıcı yorum eklenecek.
+
+---
+
+## K17 — SAHTE BAŞARI TARAMASI TAMAMEN KAPANDI (29/29) · 2026-09-20
+
+**Uygulayan:** Codex, iş paketiyle (`docs/IS-PAKETI-sahte-basari-kademe4-5.md`).
+
+**✅ KABUL EDİLDİ.** Doğrulandı: 3 ölü dosya (`AccountStore.cs`,
+`SyncedIconOverlayHandler.cs`, `CloudFuseFileSystem.cs`) gerçekten
+silinmiş; `MultiSych.Desktop/MainWindow.axaml.cs` (0 bayt) dokunulmamış;
+Dokan dönüş değerleri (`DokanResult.Success` vb.) DEĞİŞMEMİŞ, yalnız
+açıklayıcı yorum eklenmiş; `ExportPassword` View/ViewModel'den ve her
+iki JSON sözlükten tamamen temizlenmiş (grep sıfır sonuç). `dotnet build`
+0 hata, `dotnet test` 81/81, `tools/kapilar` 8/8 yeşil,
+`lokalizasyon-testi.sh` anahtar=103 (104'ten 1 azaldı, beklenen).
+
+**Sonuç:** Antigravity'nin 2026-09-20 tarihli 29 bulguluk "sahte başarı"
+taraması **tamamen kapandı** — 3 kritik (K12), 4 yüksek etkili (K14),
+2 orta (K15), 18 düşük/temizlik (K17) olmak üzere hepsi ele alındı,
+1 tanesi (4.7) yanlış alarm olarak doğrulanıp kapatıldı.

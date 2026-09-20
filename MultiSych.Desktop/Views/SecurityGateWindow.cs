@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using Adw;
 using Gtk;
+using MultiSych.Desktop.Localization;
 using MultiSych.Desktop.ViewModels;
 using MultiSych.Services.Configuration;
 
@@ -20,7 +21,7 @@ public class SecurityGateWindow : Gtk.Window
         _application = application;
         _viewModel = viewModel;
 
-        SetTitle("MultiSych Güvenlik Doğrulaması");
+        SetTitle(Loc.Get("security.window_title"));
         SetDefaultSize(420, 280);
         SetApplication(application);
         SetModal(true);
@@ -44,7 +45,7 @@ public class SecurityGateWindow : Gtk.Window
         box.SetMarginTop(24);
         box.SetMarginBottom(24);
 
-        var title = Gtk.Label.New("Başlangıç Güvenlik Kontrolü");
+        var title = Gtk.Label.New(Loc.Get("security.title"));
         title.SetFontSize(16);
         title.SetFontWeight(Pango.Weight.Bold);
         box.Append(title);
@@ -52,7 +53,7 @@ public class SecurityGateWindow : Gtk.Window
         Gtk.PasswordEntry? passwordEntry = null;
         if (security.RequireStartupPassword)
         {
-            var passwordLabel = Gtk.Label.New("Parola");
+            var passwordLabel = Gtk.Label.New(Loc.Get("security.password_label"));
             passwordLabel.SetHalign(Gtk.Align.Start);
             box.Append(passwordLabel);
 
@@ -70,7 +71,7 @@ public class SecurityGateWindow : Gtk.Window
         if (_viewModel.RequiresTwoFactor)
         {
             twoFactorEntry = Gtk.Entry.New();
-            twoFactorEntry.SetPlaceholderText("6 haneli 2FA kodu");
+            twoFactorEntry.SetPlaceholderText(Loc.Get("security.two_factor_placeholder"));
             twoFactorEntry.SetMaxLength(6);
             twoFactorEntry.OnNotify += (_, args) =>
             {
@@ -91,11 +92,11 @@ public class SecurityGateWindow : Gtk.Window
         var buttonBox = Gtk.Box.New(Gtk.Orientation.Horizontal, 10);
         buttonBox.SetHalign(Gtk.Align.End);
 
-        var exitButton = Gtk.Button.NewWithLabel("Çıkış");
+        var exitButton = Gtk.Button.NewWithLabel(Loc.Get("security.exit_button"));
         exitButton.OnClicked += (_, _) => _application.Quit();
         buttonBox.Append(exitButton);
 
-        var loginButton = Gtk.Button.NewWithLabel("Giriş");
+        var loginButton = Gtk.Button.NewWithLabel(Loc.Get("security.login_button"));
         loginButton.AddCssClass("suggested-action");
         loginButton.OnClicked += (_, _) => _viewModel.LoginCommand.Execute(null);
         buttonBox.Append(loginButton);

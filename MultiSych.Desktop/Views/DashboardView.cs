@@ -1,5 +1,6 @@
 using System;
 using Gtk;
+using MultiSych.Desktop.Localization;
 using MultiSych.Desktop.ViewModels;
 
 namespace MultiSych.Desktop.Views;
@@ -46,7 +47,7 @@ public class DashboardView : Gtk.Box
     private void BuildUi()
     {
         // Title
-        var title = Gtk.Label.New("Genel Bakış");
+        var title = Gtk.Label.New(Loc.Get("dashboard.title"));
         title.SetHalign(Gtk.Align.Start);
         title.SetFontSize(24);
         title.SetFontWeight(Pango.Weight.Bold);
@@ -60,11 +61,11 @@ public class DashboardView : Gtk.Box
         aiBox.SetMarginTop(15);
         aiBox.SetMarginBottom(15);
 
-        var aiTitle = Gtk.Label.New("✨ Günün Yapay Zeka Özeti");
+        var aiTitle = Gtk.Label.New(Loc.Get("dashboard.header.ai_summary"));
         aiTitle.SetHalign(Gtk.Align.Start);
         aiTitle.SetFontWeight(Pango.Weight.Bold);
         
-        _aiSummaryLabel = Gtk.Label.New("Yükleniyor...");
+        _aiSummaryLabel = Gtk.Label.New(Loc.Get("common.loading"));
         _aiSummaryLabel.SetHalign(Gtk.Align.Start);
         _aiSummaryLabel.SetWrap(true);
 
@@ -94,7 +95,7 @@ public class DashboardView : Gtk.Box
         statusBox.SetMarginTop(15);
         statusBox.SetMarginBottom(15);
 
-        _statusLabel = Gtk.Label.New("Ready.");
+        _statusLabel = Gtk.Label.New(Loc.Get("common.ready"));
         _statusLabel.SetHalign(Gtk.Align.Start);
         statusBox.Append(_statusLabel);
         statusFrame.SetChild(statusBox);

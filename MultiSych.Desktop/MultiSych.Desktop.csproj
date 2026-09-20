@@ -52,4 +52,16 @@
     <TrimmerRootAssembly Include="Microsoft.EntityFrameworkCore.Relational" />
   </ItemGroup>
 
+  <!-- Lokalizasyon kaynak sözlükleri (docs/KARARLAR.md K12) — Loc.cs bunları
+       AppContext.BaseDirectory/Localization altından okuyor, o yüzden çıktı
+       dizinine kopyalanmaları gerekiyor. -->
+  <ItemGroup>
+    <None Include="Localization\tr.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Localization\en.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

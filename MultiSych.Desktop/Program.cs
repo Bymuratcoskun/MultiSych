@@ -145,6 +145,11 @@ internal static class Program
             var userSettingsService = ServiceProvider.GetRequiredService<IUserSettingsService>();
             userSettingsService.LoadAsync().GetAwaiter().GetResult();
 
+            // Dil, ilk View inşa edilmeden ÖNCE uygulanmalı — GTK widget'ları
+            // metinlerini yalnız oluşturuldukları anda okuyor, canlı yeniden
+            // bağlama yok (bkz. docs/KARARLAR.md K12).
+            App.ApplyLanguage(userSettingsService.Settings.Language == "Türkçe" ? "tr-TR" : "en-US");
+
             if (args.Length > 0)
             {
                 var handled = RunCommandLineAsync(args, ServiceProvider, config).GetAwaiter().GetResult();

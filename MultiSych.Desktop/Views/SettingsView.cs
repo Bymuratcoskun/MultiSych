@@ -1,6 +1,7 @@
 using System;
 using Gtk;
 using Adw;
+using MultiSych.Desktop.Localization;
 using MultiSych.Desktop.ViewModels;
 
 namespace MultiSych.Desktop.Views;
@@ -42,7 +43,7 @@ public class SettingsView : Gtk.Box
     private void BuildUi()
     {
         // Title
-        var title = Gtk.Label.New("Ayarlar");
+        var title = Gtk.Label.New(Loc.Get("settings.title"));
         title.SetHalign(Gtk.Align.Start);
         title.SetFontSize(24);
         title.SetFontWeight(Pango.Weight.Bold);
@@ -50,11 +51,11 @@ public class SettingsView : Gtk.Box
 
         // Preference Groups
         var prefGroup = Adw.PreferencesGroup.New();
-        prefGroup.SetTitle("Genel Ayarlar");
+        prefGroup.SetTitle(Loc.Get("settings.general_title"));
 
         // Language Dropdown
         var rowLang = Adw.ActionRow.New();
-        rowLang.SetTitle("Dil");
+        rowLang.SetTitle(Loc.Get("settings.language_title"));
         rowLang.SetSubtitle("Uygulama arayüz dilini değiştirin");
         
         string[] languages = ["English", "Türkçe"];
@@ -64,7 +65,7 @@ public class SettingsView : Gtk.Box
 
         // Theme Dropdown
         var rowTheme = Adw.ActionRow.New();
-        rowTheme.SetTitle("Tema");
+        rowTheme.SetTitle(Loc.Get("settings.theme_title"));
         rowTheme.SetSubtitle("Arayüz temasını değiştirin");
         
         string[] themes = ["Modern", "Retro", "Sade"];
@@ -76,25 +77,25 @@ public class SettingsView : Gtk.Box
 
         // Actions Group
         var actGroup = Adw.PreferencesGroup.New();
-        actGroup.SetTitle("Veri ve Bakım");
+        actGroup.SetTitle(Loc.Get("settings.data_maintenance_title"));
 
         var rowBackup = Adw.ActionRow.New();
-        rowBackup.SetTitle("Veritabanı Yedekleme");
-        var btnBackup = Gtk.Button.NewWithLabel("Yedekle");
+        rowBackup.SetTitle(Loc.Get("settings.database_backup_title"));
+        var btnBackup = Gtk.Button.NewWithLabel(Loc.Get("settings.backup_button"));
         btnBackup.OnClicked += (s, e) => _viewModel?.BackupDatabaseCommand.Execute(null);
         rowBackup.AddSuffix(btnBackup);
         actGroup.Add(rowBackup);
 
         var rowRestore = Adw.ActionRow.New();
-        rowRestore.SetTitle("Yedekten Geri Yükleme");
-        var btnRestore = Gtk.Button.NewWithLabel("Geri Yükle");
+        rowRestore.SetTitle(Loc.Get("settings.database_restore_title"));
+        var btnRestore = Gtk.Button.NewWithLabel(Loc.Get("settings.restore_button"));
         btnRestore.OnClicked += (s, e) => _viewModel?.RestoreDatabaseCommand.Execute(null);
         rowRestore.AddSuffix(btnRestore);
         actGroup.Add(rowRestore);
 
         var rowClearCache = Adw.ActionRow.New();
-        rowClearCache.SetTitle("Önbellek Temizleme");
-        var btnClearCache = Gtk.Button.NewWithLabel("Önbelleği Temizle");
+        rowClearCache.SetTitle(Loc.Get("settings.cache_cleanup_title"));
+        var btnClearCache = Gtk.Button.NewWithLabel(Loc.Get("settings.clear_cache_button"));
         btnClearCache.OnClicked += (s, e) => _viewModel?.ClearCacheCommand.Execute(null);
         rowClearCache.AddSuffix(btnClearCache);
         actGroup.Add(rowClearCache);
@@ -120,9 +121,9 @@ public class SettingsView : Gtk.Box
 
         // Log controls
         var btnBox = Gtk.Box.New(Gtk.Orientation.Horizontal, 10);
-        var btnPause = Gtk.Button.NewWithLabel("Durdur / Başlat");
+        var btnPause = Gtk.Button.NewWithLabel(Loc.Get("settings.toggle_logs_button"));
         btnPause.OnClicked += (s, e) => _viewModel?.ToggleLogPauseCommand.Execute(null);
-        var btnClear = Gtk.Button.NewWithLabel("Temizle");
+        var btnClear = Gtk.Button.NewWithLabel(Loc.Get("settings.clear_logs_button"));
         btnClear.OnClicked += (s, e) => _viewModel?.ClearLogCommand.Execute(null);
 
         btnBox.Append(btnPause);

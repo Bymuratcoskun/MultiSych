@@ -41,7 +41,7 @@ namespace MultiSych.Services.Implementations
             if (credentials.Provider == "Yandex")
                 return await GetYandexEventsAsync(credentials, startDate, endDate);
 
-            return new List<CalendarEvent>();
+            throw new NotSupportedException($"Provider {credentials.Provider} is not supported for calendar events.");
         }
 
         public async Task<CalendarEvent> GetEventAsync(AccountCredentials credentials, string eventId)

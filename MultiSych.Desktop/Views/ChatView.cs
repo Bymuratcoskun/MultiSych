@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel;
 using System.Text;
 using Gtk;
+using MultiSych.Desktop.Localization;
 using MultiSych.Desktop.ViewModels;
 
 namespace MultiSych.Desktop.Views;
@@ -44,15 +45,15 @@ public class ChatView : Gtk.Box
     private void BuildUi()
     {
         var header = Gtk.Box.New(Gtk.Orientation.Horizontal, 10);
-        var title = Gtk.Label.New("💬 Sohbet");
+        var title = Gtk.Label.New(Loc.Get("chat.title"));
         title.SetFontSize(20);
         title.SetFontWeight(Pango.Weight.Bold);
         title.SetHalign(Gtk.Align.Start);
         title.SetHexpand(true);
         header.Append(title);
 
-        _dataModeButton = Gtk.Button.NewWithLabel("🗂️ Verilerim: Kapalı");
-        _dataModeButton.SetTooltipText("Açıkken sorular e-posta/dosya/takvim verilerinizde aranır (RAG).");
+        _dataModeButton = Gtk.Button.NewWithLabel(Loc.Get("chat.data_mode_off_button"));
+        _dataModeButton.SetTooltipText(Loc.Get("chat.data_mode_tooltip"));
         _dataModeButton.OnClicked += (_, _) =>
         {
             if (_viewModel != null) _viewModel.IsDataAwareMode = !_viewModel.IsDataAwareMode;
@@ -71,7 +72,7 @@ public class ChatView : Gtk.Box
         var inputRow = Gtk.Box.New(Gtk.Orientation.Horizontal, 8);
         _entry = Gtk.Entry.New();
         _entry.SetHexpand(true);
-        _entry.SetPlaceholderText("Mesajınızı yazın…");
+        _entry.SetPlaceholderText(Loc.Get("chat.message_placeholder"));
         _entry.OnNotify += (_, args) =>
         {
             if (args.Pspec.GetName() == "text" && _viewModel != null)
@@ -81,11 +82,11 @@ public class ChatView : Gtk.Box
         inputRow.Append(_entry);
 
         var btnRecord = Gtk.Button.NewWithLabel("🎤");
-        btnRecord.SetTooltipText("Sesli mesaj (dikte)");
+        btnRecord.SetTooltipText(Loc.Get("chat.voice_message_tooltip"));
         btnRecord.OnClicked += (_, _) => _viewModel?.ToggleRecordingCommand.Execute(null);
         inputRow.Append(btnRecord);
 
-        var btnSend = Gtk.Button.NewWithLabel("Gönder");
+        var btnSend = Gtk.Button.NewWithLabel(Loc.Get("common.send"));
         btnSend.AddCssClass("suggested-action");
         btnSend.OnClicked += (_, _) => Send();
         inputRow.Append(btnSend);

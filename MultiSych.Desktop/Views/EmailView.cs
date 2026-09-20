@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Gtk;
+using MultiSych.Desktop.Localization;
 using MultiSych.Desktop.ViewModels;
 using MultiSych.Services.Models;
 
@@ -58,12 +59,12 @@ public class EmailView : Gtk.Box
         col.SetMarginTop(15);
         col.SetMarginBottom(15);
 
-        var btnCompose = Gtk.Button.NewWithLabel("✏️ Yeni E-posta");
+        var btnCompose = Gtk.Button.NewWithLabel(Loc.Get("email.compose_button"));
         btnCompose.AddCssClass("suggested-action");
         btnCompose.OnClicked += (_, _) => _viewModel?.ComposeEmailCommand.Execute(null);
         col.Append(btnCompose);
 
-        var btnRefresh = Gtk.Button.NewWithLabel("🔄 Yenile");
+        var btnRefresh = Gtk.Button.NewWithLabel(Loc.Get("common.refresh_button"));
         btnRefresh.OnClicked += (_, _) => _viewModel?.RefreshCommand.Execute(null);
         col.Append(btnRefresh);
 
@@ -90,7 +91,7 @@ public class EmailView : Gtk.Box
         col.SetMarginBottom(15);
 
         _searchEntry = Gtk.Entry.New();
-        _searchEntry.SetPlaceholderText("E-postalarda ara…");
+        _searchEntry.SetPlaceholderText(Loc.Get("email.search_placeholder"));
         _searchEntry.OnNotify += (_, args) =>
         {
             if (args.Pspec.GetName() == "text" && _viewModel != null)
@@ -125,7 +126,7 @@ public class EmailView : Gtk.Box
         col.SetMarginTop(15);
         col.SetMarginBottom(15);
 
-        _readSubject = Gtk.Label.New("Bir e-posta seçin");
+        _readSubject = Gtk.Label.New(Loc.Get("email.select_prompt"));
         _readSubject.SetHalign(Gtk.Align.Start);
         _readSubject.SetFontSize(18);
         _readSubject.SetFontWeight(Pango.Weight.Bold);
@@ -143,7 +144,7 @@ public class EmailView : Gtk.Box
         AddAction(actions, "↩️ Akıllı Yanıt", () => _viewModel?.GenerateSmartReplyCommand.Execute(null));
         AddAction(actions, "📁 Arşivle", () => _viewModel?.ArchiveEmailCommand.Execute(null));
         AddAction(actions, "✓ Okundu/Okunmadı", () => _viewModel?.ToggleReadStatusCommand.Execute(null));
-        var btnDelete = Gtk.Button.NewWithLabel("🗑️ Sil");
+        var btnDelete = Gtk.Button.NewWithLabel(Loc.Get("email.delete_button"));
         btnDelete.AddCssClass("destructive-action");
         btnDelete.OnClicked += (_, _) => _viewModel?.DeleteEmailCommand.Execute(null);
         actions.Append(btnDelete);

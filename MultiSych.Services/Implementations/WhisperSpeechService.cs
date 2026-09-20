@@ -252,7 +252,7 @@ namespace MultiSych.Services.Implementations
             if (OperatingSystem.IsWindows())
             {
                 try { _synthesizer?.SpeakAsyncCancelAll(); }
-                catch { }
+                catch (Exception ex) { _logger.Warning(ex, "Konuşma sentezi iptal edilemedi"); }
             }
 #endif
         }
@@ -358,7 +358,10 @@ namespace MultiSych.Services.Implementations
                     File.Delete(partialCopy);
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _logger.Warning(ex, "Geçici gerçek zamanlı ses dosyası silinemedi");
+            }
         }
     }
 }

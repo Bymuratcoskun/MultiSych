@@ -1,5 +1,6 @@
 using System;
 using Gtk;
+using MultiSych.Desktop.Localization;
 using MultiSych.Desktop.ViewModels;
 
 namespace MultiSych.Desktop.Views;
@@ -42,14 +43,14 @@ public class AccountsView : Gtk.Box
         // Header Box
         var header = Gtk.Box.New(Gtk.Orientation.Horizontal, 10);
         
-        var title = Gtk.Label.New("Bağlı Hesaplar");
+        var title = Gtk.Label.New(Loc.Get("accounts.title"));
         title.SetHalign(Gtk.Align.Start);
         title.SetFontSize(24);
         title.SetFontWeight(Pango.Weight.Bold);
         title.SetHexpand(true);
         header.Append(title);
 
-        _btnAddAccount = Gtk.Button.NewWithLabel("Yeni Hesap Ekle ➕");
+        _btnAddAccount = Gtk.Button.NewWithLabel(Loc.Get("accounts.add_button"));
         _btnAddAccount.OnClicked += (s, e) => _viewModel?.AddAccountCommand.Execute(null);
         _btnAddAccount.AddCssClass("suggested-action");
         header.Append(_btnAddAccount);
@@ -124,24 +125,24 @@ public class AccountsView : Gtk.Box
             // Mount actions
             if (item.IsMounted)
             {
-                var btnUnmount = Gtk.Button.NewWithLabel("Sürücüyü Ayır");
+                var btnUnmount = Gtk.Button.NewWithLabel(Loc.Get("accounts.unmount_button"));
                 btnUnmount.OnClicked += (s, e) => _viewModel.UnmountCommand.Execute(item);
                 box.Append(btnUnmount);
             }
             else
             {
-                var btnMount = Gtk.Button.NewWithLabel("Sürücüyü Bağla");
+                var btnMount = Gtk.Button.NewWithLabel(Loc.Get("accounts.mount_button"));
                 btnMount.OnClicked += (s, e) => _viewModel.MountCommand.Execute(item);
                 box.Append(btnMount);
             }
 
             // Sync account action
-            var btnSync = Gtk.Button.NewWithLabel("Senkronize Et 🔄");
+            var btnSync = Gtk.Button.NewWithLabel(Loc.Get("accounts.sync_button"));
             btnSync.OnClicked += (s, e) => _viewModel.SyncAccountCommand.Execute(item);
             box.Append(btnSync);
 
             // Delete action
-            var btnDelete = Gtk.Button.NewWithLabel("Kaldır 🗑️");
+            var btnDelete = Gtk.Button.NewWithLabel(Loc.Get("accounts.remove_button"));
             btnDelete.OnClicked += (s, e) => _viewModel.DeleteAccountCommand.Execute(item);
             btnDelete.AddCssClass("destructive-action");
             box.Append(btnDelete);

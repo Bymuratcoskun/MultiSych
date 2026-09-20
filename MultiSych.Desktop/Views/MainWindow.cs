@@ -5,6 +5,7 @@ using Gtk;
 using Adw;
 using Gio;
 using Microsoft.Extensions.DependencyInjection;
+using MultiSych.Desktop.Localization;
 using MultiSych.Desktop.ViewModels;
 using MultiSych.Services.Interfaces;
 
@@ -52,7 +53,7 @@ public class MainWindow : Adw.ApplicationWindow
     {
         Instance = this;
 
-        SetTitle("MultiSych - Cloud AI Platform");
+        SetTitle(Loc.Get("app.window_title"));
         SetDefaultSize(1200, 750);
 
         BuildUi();
@@ -94,7 +95,7 @@ public class MainWindow : Adw.ApplicationWindow
 
         var logoLabel = Gtk.Label.New("☁️");
         logoLabel.SetFontSize(32);
-        var titleLabel = Gtk.Label.New("MultiSych");
+        var titleLabel = Gtk.Label.New(Loc.Get("app.title"));
         titleLabel.SetFontSize(24);
         titleLabel.SetFontWeight(Pango.Weight.Bold);
 
@@ -109,17 +110,17 @@ public class MainWindow : Adw.ApplicationWindow
         _navigationList.OnRowSelected += NavigationList_OnRowSelected;
 
         // Navigasyon öğeleri (id'ler MainWindowViewModel.UpdateCurrentPage switch'iyle eşleşmeli)
-        AddNavigationRow("Dashboard", "📊 Panel");
-        AddNavigationRow("Accounts", "🔗 Hesaplar");
-        AddNavigationRow("Mail", "✉️ E-posta");
-        AddNavigationRow("Chat", "💬 Sohbet");
-        AddNavigationRow("Explorer", "📁 Dosyalar");
-        AddNavigationRow("Documents", "📄 Belgeler");
-        AddNavigationRow("Analyzer", "🔍 Belge Analizi");
-        AddNavigationRow("AI", "🧠 AI Genel Bakış");
-        AddNavigationRow("Sync", "🔄 Senkronizasyon");
-        AddNavigationRow("Logs", "📋 Loglar");
-        AddNavigationRow("Settings", "⚙️ Ayarlar");
+        AddNavigationRow("Dashboard", Loc.Get("nav.dashboard"));
+        AddNavigationRow("Accounts", Loc.Get("nav.accounts"));
+        AddNavigationRow("Mail", Loc.Get("nav.mail"));
+        AddNavigationRow("Chat", Loc.Get("nav.chat"));
+        AddNavigationRow("Explorer", Loc.Get("nav.explorer"));
+        AddNavigationRow("Documents", Loc.Get("nav.documents"));
+        AddNavigationRow("Analyzer", Loc.Get("nav.analyzer"));
+        AddNavigationRow("AI", Loc.Get("nav.ai"));
+        AddNavigationRow("Sync", Loc.Get("nav.sync"));
+        AddNavigationRow("Logs", Loc.Get("nav.logs"));
+        AddNavigationRow("Settings", Loc.Get("nav.settings"));
 
         var scroll = Gtk.ScrolledWindow.New();
         scroll.SetVexpand(true);
@@ -132,21 +133,21 @@ public class MainWindow : Adw.ApplicationWindow
         aiShortcutsBox.SetMarginEnd(20);
         aiShortcutsBox.SetMarginBottom(20);
 
-        var aiTitle = Gtk.Label.New("AI ASSISTANTS");
+        var aiTitle = Gtk.Label.New(Loc.Get("main.ai_assistants_title"));
         aiTitle.SetHalign(Gtk.Align.Start);
         aiTitle.SetFontSize(10);
         aiTitle.SetFontWeight(Pango.Weight.Bold);
         aiShortcutsBox.Append(aiTitle);
 
-        var btnCopilot = Gtk.Button.NewWithLabel("🤖 Microsoft Copilot");
+        var btnCopilot = Gtk.Button.NewWithLabel(Loc.Get("main.ai.copilot_button"));
         btnCopilot.OnClicked += (s, e) => _viewModel?.OpenCopilotChatCommand.Execute(null);
         aiShortcutsBox.Append(btnCopilot);
 
-        var btnGemini = Gtk.Button.NewWithLabel("✨ Google Gemini");
+        var btnGemini = Gtk.Button.NewWithLabel(Loc.Get("main.ai.gemini_button"));
         btnGemini.OnClicked += (s, e) => _viewModel?.OpenGeminiChatCommand.Execute(null);
         aiShortcutsBox.Append(btnGemini);
 
-        var btnYandex = Gtk.Button.NewWithLabel("🧠 Yandex AI");
+        var btnYandex = Gtk.Button.NewWithLabel(Loc.Get("main.ai.yandex_button"));
         btnYandex.OnClicked += (s, e) => _viewModel?.OpenYandexChatCommand.Execute(null);
         aiShortcutsBox.Append(btnYandex);
 
@@ -158,14 +159,14 @@ public class MainWindow : Adw.ApplicationWindow
         statusBox.SetMarginEnd(20);
         statusBox.SetMarginBottom(20);
 
-        var versionLabel = Gtk.Label.New("MultiSych v1.0.0-beta");
+        var versionLabel = Gtk.Label.New(Loc.Get("app.version_label"));
         versionLabel.SetHalign(Gtk.Align.Start);
         versionLabel.SetFontSize(10);
 
         var ramBox = Gtk.Box.New(Gtk.Orientation.Horizontal, 5);
-        var ramTitle = Gtk.Label.New("RAM Usage:");
+        var ramTitle = Gtk.Label.New(Loc.Get("main.ram_usage_label"));
         ramTitle.SetFontSize(10);
-        _ramLabel = Gtk.Label.New("Calculating...");
+        _ramLabel = Gtk.Label.New(Loc.Get("common.calculating"));
         _ramLabel.SetFontSize(10);
         _ramLabel.SetFontWeight(Pango.Weight.Bold);
 

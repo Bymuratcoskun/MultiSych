@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Specialized;
 using Gtk;
+using MultiSych.Desktop.Localization;
 using MultiSych.Desktop.ViewModels;
 
 namespace MultiSych.Desktop.Views;
@@ -44,7 +45,7 @@ public class AIChatWindow : Gtk.Window
         headerBox.Append(titleLabel);
 
         _dataModeButton = Gtk.Button.NewWithLabel(_viewModel.DataModeButtonText);
-        _dataModeButton.SetTooltipText("Açıkken sorular e-posta/dosya/takvim verilerinizde aranır (RAG).");
+        _dataModeButton.SetTooltipText(Loc.Get("chat.data_mode_tooltip"));
         _dataModeButton.OnClicked += (_, _) => _viewModel.IsDataAwareMode = !_viewModel.IsDataAwareMode;
         headerBox.Append(_dataModeButton);
         box.Append(headerBox);
@@ -61,7 +62,7 @@ public class AIChatWindow : Gtk.Window
         var entryBox = Gtk.Box.New(Gtk.Orientation.Horizontal, 10);
         var entry = Gtk.Entry.New();
         entry.SetHexpand(true);
-        entry.SetPlaceholderText("Mesajınızı yazın…");
+        entry.SetPlaceholderText(Loc.Get("chat.message_placeholder"));
 
         void Send()
         {
@@ -75,7 +76,7 @@ public class AIChatWindow : Gtk.Window
 
         entry.OnActivate += (_, _) => Send();
 
-        var btnSend = Gtk.Button.NewWithLabel("Gönder");
+        var btnSend = Gtk.Button.NewWithLabel(Loc.Get("common.send"));
         btnSend.OnClicked += (_, _) => Send();
 
         entryBox.Append(entry);

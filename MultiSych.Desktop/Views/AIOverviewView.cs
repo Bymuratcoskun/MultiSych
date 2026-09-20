@@ -1,5 +1,6 @@
 using System;
 using Gtk;
+using MultiSych.Desktop.Localization;
 using MultiSych.Desktop.ViewModels;
 
 namespace MultiSych.Desktop.Views;
@@ -34,7 +35,7 @@ public class AIOverviewView : Gtk.Box
 
     private void BuildUi()
     {
-        var title = Gtk.Label.New("AI Genel Bakış");
+        var title = Gtk.Label.New(Loc.Get("ai_overview.title"));
         title.SetHalign(Gtk.Align.Start);
         title.SetFontSize(24);
         title.SetFontWeight(Pango.Weight.Bold);

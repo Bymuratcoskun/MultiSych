@@ -25,6 +25,6 @@ public static class App
 
     public static void ApplyLanguage(string langCode)
     {
-        // Stub for localization settings
+        MultiSych.Desktop.Localization.Loc.SetLanguage(langCode);
     }
 }

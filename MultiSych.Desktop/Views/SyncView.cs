@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using Gtk;
 using Adw;
+using MultiSych.Desktop.Localization;
 using MultiSych.Desktop.ViewModels;
 
 namespace MultiSych.Desktop.Views;
@@ -44,18 +45,18 @@ public class SyncView : Gtk.Box
     private void BuildUi()
     {
         // Title
-        var title = Gtk.Label.New("Senkronizasyon Kontrolü");
+        var title = Gtk.Label.New(Loc.Get("sync.title"));
         title.SetHalign(Gtk.Align.Start);
         title.SetFontSize(24);
         title.SetFontWeight(Pango.Weight.Bold);
         Append(title);
 
         var prefGroup = Adw.PreferencesGroup.New();
-        prefGroup.SetTitle("Manuel Senkronizasyon Seçenekleri");
+        prefGroup.SetTitle(Loc.Get("sync.manual_options_title"));
 
         // Accounts dropdown
         var rowAccount = Adw.ActionRow.New();
-        rowAccount.SetTitle("Hesap Seçimi");
+        rowAccount.SetTitle(Loc.Get("sync.account_selection_title"));
         rowAccount.SetSubtitle("Senkronize edilecek hesabı seçin");
 
         // Empty default setup (will be populated dynamically)
@@ -76,7 +77,7 @@ public class SyncView : Gtk.Box
 
         // Sync Type dropdown
         var rowType = Adw.ActionRow.New();
-        rowType.SetTitle("Senkronizasyon Türü");
+        rowType.SetTitle(Loc.Get("sync.type_title"));
         rowType.SetSubtitle("Veri kategorisi filtresi");
 
         string[] syncTypes = ["Tümü", "E-Posta", "Takvim", "Dosyalar"];
@@ -101,11 +102,11 @@ public class SyncView : Gtk.Box
         var actionBox = Gtk.Box.New(Gtk.Orientation.Horizontal, 15);
         actionBox.SetMarginTop(10);
 
-        _btnSync = Gtk.Button.NewWithLabel("Senkronizasyonu Başlat 🔄");
+        _btnSync = Gtk.Button.NewWithLabel(Loc.Get("sync.start_button"));
         _btnSync.OnClicked += (s, e) => _viewModel?.TriggerSyncCommand.Execute(null);
         _btnSync.AddCssClass("suggested-action");
 
-        _btnAnalyze = Gtk.Button.NewWithLabel("E-Postaları AI ile Analiz Et ✨");
+        _btnAnalyze = Gtk.Button.NewWithLabel(Loc.Get("sync.analyze_emails_button"));
         _btnAnalyze.OnClicked += (s, e) => _viewModel?.AnalyzeEmailsCommand.Execute(null);
 
         actionBox.Append(_btnSync);

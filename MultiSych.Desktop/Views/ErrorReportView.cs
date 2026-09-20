@@ -1,5 +1,6 @@
 using System;
 using Gtk;
+using MultiSych.Desktop.Localization;
 using MultiSych.Desktop.ViewModels;
 
 namespace MultiSych.Desktop.Views;
@@ -35,20 +36,20 @@ public class ErrorReportView : Gtk.Box
 
     private void BuildUi()
     {
-        var title = Gtk.Label.New("Hata Bildirimi / GitHub Issue Aç");
+        var title = Gtk.Label.New(Loc.Get("error_report.title"));
         title.SetHalign(Gtk.Align.Start);
         title.SetFontSize(24);
         title.SetFontWeight(Pango.Weight.Bold);
         Append(title);
 
-        var explanation = Gtk.Label.New("Başlığı ve ayrıntıları girin. Gönder düğmesi GitHub issue sayfasını tarayıcıda açar.");
+        var explanation = Gtk.Label.New(Loc.Get("error_report.description"));
         explanation.SetHalign(Gtk.Align.Start);
         explanation.SetWrap(true);
         explanation.AddCssClass("dim-label");
         Append(explanation);
 
         _titleEntry = Gtk.Entry.New();
-        _titleEntry.SetPlaceholderText("Kısa ve açıklayıcı başlık");
+        _titleEntry.SetPlaceholderText(Loc.Get("error_report.title_placeholder"));
         _titleEntry.OnNotify += (_, args) =>
         {
             if (args.Pspec.GetName() == "text" && _viewModel != null)
@@ -69,7 +70,7 @@ public class ErrorReportView : Gtk.Box
         scroll.SetVexpand(true);
         Append(scroll);
 
-        _submitButton = Gtk.Button.NewWithLabel("GitHub'da Issue Aç");
+        _submitButton = Gtk.Button.NewWithLabel(Loc.Get("error_report.submit_button"));
         _submitButton.AddCssClass("suggested-action");
         _submitButton.SetHalign(Gtk.Align.End);
         _submitButton.OnClicked += (_, _) =>

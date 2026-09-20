@@ -7,14 +7,13 @@
 # "=> throw new NotImplementedException();" idi. Diğerleri (NotSupportedException)
 # en azından provider bazlı anlamlı ayrımlar; bu tek satır düz bir eksikti.
 #
-# BASELINE=1 olarak bugünkü ölçülmüş duruma sabitlendi (yalnız bu bir hedef
-# DEĞİL, bir tavan'dır — amaç 0'a indirmek, ama sessizce artmasını
-# engellemek daha acil). BASELINE'ı düşürmeden bu dosyayı değiştirmeyin;
-# düşürüldüğünde bu yorum da güncellenmeli.
+# BASELINE 2026-09-20'de 1 olarak başladı, aynı gün SearchFilesAsync gerçek
+# bir uygulamaya (yerel önbellek araması, docs/KARARLAR.md K15) kavuşunca
+# 0'a indirildi — artık bir tavan değil sıfır tolerans.
 set -uo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BASELINE=1
+BASELINE=0
 
 SAYI=$(grep -rn '=> throw new NotImplementedException();' \
   "$ROOT_DIR/MultiSych.Services" "$ROOT_DIR/MultiSych.Desktop" \

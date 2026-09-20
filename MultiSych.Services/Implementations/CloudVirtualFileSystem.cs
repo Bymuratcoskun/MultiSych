@@ -558,12 +558,15 @@ public class CloudVirtualFileSystem : IDokanOperations
         var localCachePath = Path.Combine(cacheFolder, fileId);
         if (File.Exists(localCachePath))
         {
-            try { File.Delete(localCachePath); } catch { }
+            try { File.Delete(localCachePath); }
+            catch (Exception ex) { _logger.Warning(ex, "Dokan yerel önbellek dosyası silinemedi: {Path}", localCachePath); }
         }
     }
 
+    // Sanal/bulut destekli sürücüde CloseFile için ek yerel işlem yok — bilinçli no-op.
     public void CloseFile(string fileName, IDokanFileInfo info) { }
 
+    // Sanal/bulut destekli sürücüde ayrı bir fiziksel tampon yok — bilinçli olarak başarı dönülüyor.
     public NtStatus FlushFileBuffers(string fileName, IDokanFileInfo info) => DokanResult.Success;
 
     public NtStatus DeleteFile(string fileName, IDokanFileInfo info)
@@ -861,6 +864,7 @@ public class CloudVirtualFileSystem : IDokanOperations
 
     public NtStatus SetFileTime(string fileName, DateTime? creationTime, DateTime? lastAccessTime, DateTime? lastWriteTime, IDokanFileInfo info) => DokanResult.Error;
 
+    // Sanal/bulut destekli sürücüde gerçek dosya kilidi kavramı yok — bilinçli olarak başarı dönülüyor.
     public NtStatus UnlockFile(string fileName, long offset, long length, IDokanFileInfo info) => DokanResult.Success;
 
     public NtStatus WriteFile(string fileName, byte[] buffer, out int bytesWritten, long offset, IDokanFileInfo info)
@@ -890,6 +894,7 @@ public class CloudVirtualFileSystem : IDokanOperations
 
     public NtStatus GetDiskFreeSpace(out long freeBytesAvailable, out long totalNumberOfBytes, out long totalNumberOfFreeBytes, IDokanFileInfo info)
     {
+        // Yer tutucu sabit değer — gerçek kota/disk alanı hesaplanmıyor.
         freeBytesAvailable = 512 * 1024 * 1024;
         totalNumberOfBytes = 1024 * 1024 * 1024;
         totalNumberOfFreeBytes = 512 * 1024 * 1024;
@@ -958,6 +963,7 @@ public class CloudVirtualFileSystem : IDokanOperations
 
     public NtStatus SetFileSecurity(string fileName, FileSystemSecurity security, AccessControlSections sections, IDokanFileInfo info)
     {
+        // Sanal/bulut destekli sürücüde gerçek ACL karşılığı yok — bilinçli olarak başarı dönülüyor.
         return DokanResult.Success;
     }
 
@@ -981,6 +987,7 @@ public class CloudVirtualFileSystem : IDokanOperations
 
     public NtStatus LockFile(string fileName, long offset, long length, IDokanFileInfo info)
     {
+        // Sanal/bulut destekli sürücüde gerçek dosya kilidi kavramı yok — bilinçli olarak başarı dönülüyor.
         return DokanResult.Success;
     }
 

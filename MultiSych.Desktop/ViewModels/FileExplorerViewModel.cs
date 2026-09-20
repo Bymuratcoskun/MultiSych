@@ -178,10 +178,10 @@ public class FileExplorerViewModel : ViewModelBase
                 }
 
                 // Dosyayı yerel uygulama önbelleğine (Cache) kopyalayarak çevrimdışı erişilebilir yapıyoruz
+                var localCachePath = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MultiSych", "Drives", SelectedAccountId ?? string.Empty);
+                var targetPath = System.IO.Path.Combine(localCachePath, filePathStr.TrimStart('/'));
                 try 
                 {
-                    var localCachePath = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MultiSych", "Drives", SelectedAccountId ?? string.Empty);
-                    var targetPath = System.IO.Path.Combine(localCachePath, filePathStr.TrimStart('/'));
                     var dirName = System.IO.Path.GetDirectoryName(targetPath);
                     if (!string.IsNullOrEmpty(dirName))
                         System.IO.Directory.CreateDirectory(dirName);
@@ -200,7 +200,10 @@ public class FileExplorerViewModel : ViewModelBase
                         System.IO.File.Copy(path, targetPath, true);
                     }
                 } 
-                catch { /* Önemsiz önbellekleme hatalarını yoksay */ }
+                catch (Exception ex)
+                {
+                    Serilog.Log.Warning(ex, "Yerel çevrimdışı önbellek kopyası başarısız oldu (bulut yüklemesi etkilenmedi): {Path}", targetPath);
+                }
             }
 
             appStatusService.PostUpdate("Yükleme tamamlandı. Liste güncelleniyor...", true);
