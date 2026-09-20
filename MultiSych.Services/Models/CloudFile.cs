@@ -13,6 +13,7 @@ namespace MultiSych.Services.Models
         public bool IsDirectory { get; set; }
         public string? Provider { get; set; } // "Google", "Microsoft", "Yandex"
         public string? AccountId { get; set; }
+        public string? WebEditUrl { get; set; }
         public Dictionary<string, object>? Metadata { get; set; }
     }
 }

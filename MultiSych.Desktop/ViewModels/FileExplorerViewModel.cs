@@ -185,7 +185,20 @@ public class FileExplorerViewModel : ViewModelBase
                     var dirName = System.IO.Path.GetDirectoryName(targetPath);
                     if (!string.IsNullOrEmpty(dirName))
                         System.IO.Directory.CreateDirectory(dirName);
-                    System.IO.File.Copy(path, targetPath, true);
+                    
+                    var useEncryption = string.Equals(Environment.GetEnvironmentVariable("MULTISYCH_ENCRYPT_STORAGE"), "true", StringComparison.OrdinalIgnoreCase);
+                    var storagePassword = Environment.GetEnvironmentVariable("MULTISYCH_STORAGE_PASSWORD");
+
+                    if (useEncryption && !string.IsNullOrEmpty(storagePassword))
+                    {
+                        var plaintextBytes = System.IO.File.ReadAllBytes(path);
+                        var encryptedBytes = MultiSych.Services.Security.SecurityHelper.EncryptBytes(plaintextBytes, storagePassword);
+                        System.IO.File.WriteAllBytes(targetPath, encryptedBytes);
+                    }
+                    else
+                    {
+                        System.IO.File.Copy(path, targetPath, true);
+                    }
                 } 
                 catch { /* Önemsiz önbellekleme hatalarını yoksay */ }
             }

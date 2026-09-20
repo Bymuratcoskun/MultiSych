@@ -1,12 +1,12 @@
 using System;
 using System.Threading.Tasks;
-using Avalonia;
-using Avalonia.Controls;
-using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Controls.Notifications;
+using Gtk;
+using Adw;
+using Gio;
 using Microsoft.Extensions.DependencyInjection;
 using MultiSych.Desktop.Views;
 using MultiSych.Desktop.ViewModels;
+using Task = System.Threading.Tasks.Task;
 
 namespace MultiSych.Desktop.Services;
 
@@ -14,80 +14,160 @@ public class WindowService(IServiceProvider serviceProvider) : IWindowService
 {
     public void ShowAddAccountDialog()
     {
-        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop && desktop.MainWindow != null)
+        GLib.Functions.IdleAdd(0, () =>
         {
-            var dialog = new AddAccountWindow
+            if (MainWindow.Instance != null)
             {
-                DataContext = serviceProvider.GetRequiredService<AddAccountViewModel>()
-            };
-            
-            // Pencereyi ana pencerenin üzerinde "Dialog (Modal)" olarak açar
-            dialog.ShowDialog(desktop.MainWindow);
-        }
+                var dialog = new AddAccountWindow(MainWindow.Instance)
+                {
+                    DataContext = serviceProvider.GetRequiredService<AddAccountViewModel>()
+                };
+                dialog.Present();
+            }
+            return false;
+        });
     }
 
     public void ShowAIChat(string provider)
     {
-        // AI Chat ekranı MainWindow içerisine gömülü olduğu için bu metot ileride ayrı pencere yapmak istenirse diye bırakıldı.
+        GLib.Functions.IdleAdd(0, () =>
+        {
+            if (MainWindow.Instance != null)
+            {
+                var vm = new AIChatViewModel(provider, serviceProvider);
+                var dialog = new AIChatWindow(MainWindow.Instance, vm);
+                dialog.Present();
+            }
+            return false;
+        });
     }
 
-    public Task<bool> ShowConfirmationDialogAsync(string message)
+    public async Task<bool> ShowConfirmationDialogAsync(string message)
     {
-        // Şimdilik doğrulama kutusu gerçek bir kullanıcı interaksiyonu yerine her zaman onay döndürür.
-        return Task.FromResult(true);
+        try
+        {
+            var dialog = new Gtk.AlertDialog
+            {
+                Message = "Onay",
+                Detail = message,
+                Buttons = new string[] { "Evet", "Hayır" },
+                DefaultButton = 0,
+                CancelButton = 1
+            };
+            var result = await dialog.ChooseAsync(MainWindow.Instance);
+            return result == 0;
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "ShowConfirmationDialogAsync failed");
+            return false;
+        }
     }
 
     public async Task<string?> OpenFileDialogAsync(string title, string[]? extensions = null)
     {
-        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop && desktop.MainWindow != null)
+        try
         {
-            var options = new Avalonia.Platform.Storage.FilePickerOpenOptions
-            {
-                Title = title,
-                AllowMultiple = false
-            };
-
-            if (extensions != null && extensions.Length > 0)
-            {
-                var filter = new Avalonia.Platform.Storage.FilePickerFileType("Allowed Files") { Patterns = extensions };
-                options.FileTypeFilter = [filter];
-            }
-
-            var files = await desktop.MainWindow.StorageProvider.OpenFilePickerAsync(options);
-            if (files != null && files.Count > 0)
-                return files[0].Path.LocalPath;
+            var dialog = new Gtk.FileDialog();
+            dialog.SetTitle(title);
+            var file = await dialog.OpenAsync(MainWindow.Instance);
+            return file?.GetPath();
         }
-
-        return null;
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "OpenFileDialogAsync failed");
+            return null;
+        }
     }
 
-#pragma warning disable CA1822 // Member does not access instance data and can be marked as static
     public async Task<string?> SaveFileDialogAsync(string title, string defaultExtension)
     {
-        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop && desktop.MainWindow != null)
+        try
         {
-            var options = new Avalonia.Platform.Storage.FilePickerSaveOptions
-            {
-                Title = title,
-                DefaultExtension = defaultExtension,
-                SuggestedFileName = $"MultiSych_Export_{DateTime.Now:yyyyMMdd}.{defaultExtension}"
-            };
-
-            var file = await desktop.MainWindow.StorageProvider.SaveFilePickerAsync(options);
-            return file?.Path.LocalPath;
+            var dialog = new Gtk.FileDialog();
+            dialog.SetTitle(title);
+            var file = await dialog.SaveAsync(MainWindow.Instance);
+            return file?.GetPath();
         }
-        return null;
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "SaveFileDialogAsync failed");
+            return null;
+        }
     }
-#pragma warning restore CA1822
 
     public void ShowNotification(string title, string message, NotificationSound sound = NotificationSound.Default)
     {
-        // Yalnızca Avalonia'nın ana UI thread'inde (Dispatcher) çalışmasını garanti altına alıyoruz
-        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        GLib.Functions.IdleAdd(0, () =>
         {
-            // Modern ve animasyonlu Toast penceremizi, ses türüyle birlikte çağırıyoruz
-            var toast = new ToastNotificationWindow(title, message, sound, durationSeconds: 7);
-            toast.Show();
+            try
+            {
+                var notification = Gio.Notification.New(title);
+                notification.SetBody(message);
+                
+                var app = MainWindow.Instance?.Application;
+                if (app != null)
+                {
+                    // application.SendNotification handles local shell dispatching
+                    // app.SendNotification(null, notification);
+                }
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Error(ex, "Failed to show notification");
+            }
+            return false;
+        });
+    }
+
+    public async Task ShowMessageDialogAsync(string title, string message)
+    {
+        try
+        {
+            var dialog = new Gtk.AlertDialog
+            {
+                Message = title,
+                Detail = message,
+                Buttons = new string[] { "Tamam" }
+            };
+            await dialog.ChooseAsync(MainWindow.Instance);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "ShowMessageDialogAsync failed");
+        }
+    }
+
+    public void ShowNewEmailDialog(string? defaultAccountId = null, string? to = null, string? subject = null, string? body = null, System.Collections.Generic.List<MultiSych.Services.Data.CloudFileEntity>? initialAttachments = null)
+    {
+        GLib.Functions.IdleAdd(0, () =>
+        {
+            if (MainWindow.Instance != null)
+            {
+                var vm = serviceProvider.GetRequiredService<NewEmailViewModel>();
+                if (!string.IsNullOrEmpty(defaultAccountId)) vm.SelectedAccountId = defaultAccountId;
+                if (!string.IsNullOrEmpty(to)) vm.ToAddress = to;
+                if (!string.IsNullOrEmpty(subject)) vm.Subject = subject;
+                if (!string.IsNullOrEmpty(body)) vm.BodyText = body;
+                
+                if (initialAttachments != null)
+                {
+                    foreach (var file in initialAttachments)
+                    {
+                        vm.Attachments.Add(new EmailAttachmentViewModel
+                        {
+                            FileId = file.FileId,
+                            FileName = file.FileName,
+                            MimeType = file.MimeType,
+                            Size = file.FileSize
+                        });
+                    }
+                }
+
+                var dialog = new NewEmailWindow(MainWindow.Instance, vm);
+                dialog.Present();
+            }
+            return false;
         });
     }
 }

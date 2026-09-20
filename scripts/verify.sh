@@ -2,8 +2,10 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SOLUTION="$ROOT_DIR/MultiSych.slnx"
 DESKTOP_PROJECT="$ROOT_DIR/MultiSych.Desktop/MultiSych.Desktop.csproj"
+
+echo "[verify] .NET SDK kontrolü"
+bash "$ROOT_DIR/scripts/check-dotnet-sdk.sh"
 
 echo "[verify] restore"
 dotnet restore "$DESKTOP_PROJECT"

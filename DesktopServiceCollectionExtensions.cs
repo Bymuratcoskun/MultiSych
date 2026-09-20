@@ -20,6 +20,9 @@ public static class DesktopServiceCollectionExtensions
         services.AddTransient<SettingsViewModel>();
         services.AddTransient<ChatViewModel>();
         services.AddTransient<AIChatViewModel>();
+        services.AddTransient<EmailViewModel>();
+        services.AddTransient<NewEmailViewModel>();
+        services.AddTransient<DocumentsViewModel>();
         
         return services;
     }

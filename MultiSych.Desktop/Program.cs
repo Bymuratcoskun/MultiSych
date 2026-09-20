@@ -5,9 +5,10 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
-using Avalonia;
-using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.ReactiveUI;
+using Gtk;
+using Adw;
+using Gio;
+using Task = System.Threading.Tasks.Task;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,7 +21,9 @@ using MultiSych.Services.Implementations;
 using MultiSych.Services.Interfaces;
 using MultiSych.Services.Security;
 using Serilog;
+#if WINDOWS
 using Squirrel;
+#endif
 using SQLitePCL;
 
 namespace MultiSych.Desktop;
@@ -33,14 +36,13 @@ internal static class Program
 
     public static int Main(string[] args)
     {
-        // Squirrel.Windows'un kurulum, güncelleme ve kaldırma olaylarını yönetir.
-        // Bu, uygulamanın kısayollarını oluşturmak/kaldırmak için gereklidir.
-#pragma warning disable CA1416
+#if WINDOWS
+        // Squirrel.Windows kurulum, güncelleme ve kaldırma olaylarını yönetir.
         SquirrelAwareApp.HandleEvents(
             onInitialInstall: OnAppInstall,
             onAppUpdate: OnAppUpdate,
             onAppUninstall: OnAppUninstall);
-#pragma warning restore CA1416
+#endif
 
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Information()
@@ -127,8 +129,18 @@ internal static class Program
 
             var host = CreateHost(args, config, storagePassword);
             ServiceProvider = host.Services;
+
+            // Veritabanı migration'ı IAccountStore'un (Singleton) constructor'ında yan etki
+            // olarak çalışıyor (bkz. AccountStoreService.InitializeDatabase). Bu servis DI'dan
+            // ilk ne zaman çözümlenirse migration o an çalışır — deterministik değil. Arka plan
+            // servisleri (AutoSyncBackgroundService) host.StartAsync() ile HEMEN DB'ye erişmeye
+            // başladığı için, migration'ı burada AÇIKÇA ve host başlamadan ÖNCE tetikliyoruz.
+            // Bunu yapmazsak "no such table" hatası arka plan döngüsünün ilk turunda oluşuyor
+            // (2026-09-20'de ölçüldü, kanıt: docs/KARARLAR.md K6).
+            ServiceProvider.GetRequiredService<IAccountStore>();
+
             host.StartAsync().GetAwaiter().GetResult();
-            
+
             // Kullanıcı ayarlarını en baştan yükle
             var userSettingsService = ServiceProvider.GetRequiredService<IUserSettingsService>();
             userSettingsService.LoadAsync().GetAwaiter().GetResult();
@@ -143,12 +155,47 @@ internal static class Program
                 }
             }
 
-            // Masaüstü uygulamalarında terminalden (Console.ReadLine) girdi beklemek arayüzü dondurur.
-            // Bu güvenlik kontrolleri şimdilik atlanıyor. İleride Avalonia UI (Örn: Login penceresi) üzerinden yapılacaktır.
+            // GTK4 + Adwaita başlatılıyor.
+            var app = Adw.Application.New("com.multisych.desktop", Gio.ApplicationFlags.FlagsNone);
 
-            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+            app.OnActivate += (sender, e) =>
+            {
+                var adwApp = (Adw.Application)sender;
+                var security = config.Security ?? new SecuritySettings();
+                var requiresSecurityGate = security.RequireStartupPassword || security.EnableTwoFactorAuth;
+
+                void OpenMainWindow()
+                {
+                    var mainWindow = new Views.MainWindow()
+                    {
+                        DataContext = ServiceProvider.GetRequiredService<MainWindowViewModel>()
+                    };
+                    mainWindow.SetApplication(adwApp);
+                    mainWindow.Present();
+                }
+
+                if (requiresSecurityGate)
+                {
+                    Views.SecurityGateWindow? securityGateWindow = null;
+                    var loginViewModel = new LoginViewModel(security, authenticated =>
+                    {
+                        if (!authenticated)
+                            return;
+
+                        securityGateWindow!.CompleteAuthentication();
+                        OpenMainWindow();
+                    });
+                    securityGateWindow = new Views.SecurityGateWindow(adwApp, security, loginViewModel);
+                    securityGateWindow.Present();
+                    return;
+                }
+
+                OpenMainWindow();
+            };
+
+            var exitCode = app.Run(args);
             host.StopAsync().GetAwaiter().GetResult();
-            return 0;
+            return exitCode;
         }
         catch (HostAbortedException)
         {
@@ -167,13 +214,7 @@ internal static class Program
         }
     }
 
-    public static AppBuilder BuildAvaloniaApp()
-        => AppBuilder.Configure<App>()
-            .UsePlatformDetect()
-            .UseReactiveUI()
-            .LogToTrace();
-
-#pragma warning disable CA1416
+#if WINDOWS
     private static void OnAppInstall(SemanticVersion version, IAppTools tools)
     {
         tools.CreateShortcutForThisExe(ShortcutLocation.StartMenu | ShortcutLocation.Desktop);
@@ -188,6 +229,7 @@ internal static class Program
     {
         tools.RemoveShortcutForThisExe(ShortcutLocation.StartMenu | ShortcutLocation.Desktop);
     }
+#endif
 
 
     private static MultiSychConfig CreateConfiguration()
@@ -293,6 +335,9 @@ internal static class Program
                 services.AddTransient<ErrorReportViewModel>();
                 services.AddTransient<SettingsViewModel>();
                 services.AddTransient<ChatViewModel>();
+                services.AddTransient<EmailViewModel>();
+                services.AddTransient<NewEmailViewModel>();
+                services.AddTransient<DocumentsViewModel>();
                 // 4. Arayüzün ihtiyaç duyduğu yapay zeka servisini ekliyoruz - Transient
                 services.AddTransient<IAIService, AIService>();
                 // 5. .env dosyasını yönetmek için merkezi konfigürasyon servisi
@@ -302,7 +347,10 @@ internal static class Program
                 // 6. Kullanıcı arayüz tercihlerini JSON'da tutacak servis
                 services.AddSingleton<IUserSettingsService, UserSettingsService>();
                 
-                // 7. Yandex OAuth2 Entegrasyonu
+                // 7. OAuth2 Entegrasyonları
+                // IAuthenticationService Scoped olduğu için CLI komutları scope oluşturarak çözümlüyor.
+                // Burada Transient olarak kaydediyoruz ki CLI ve DI'dan doğrudan erişilebilsin.
+                services.AddTransient<IAuthenticationService, AuthenticationService>();
                 services.AddTransient<IOAuthService, YandexAuthenticationService>();
             })
             .Build();
@@ -314,12 +362,16 @@ internal static class Program
             return false;
 
         var command = args[0].ToLowerInvariant();
-        var authService = services.GetService<IAuthenticationService>();
-        var accountStore = services.GetService<IAccountStore>();
-        var emailService = services.GetService<IEmailService>();
-        var calendarService = services.GetService<ICalendarService>();
-        var storageService = services.GetService<IStorageService>();
-        var aiService = services.GetService<IAIService>();
+
+        // Scoped servisler root container'dan çözümlenemez; CLI için scope oluşturuyoruz
+        using var scope = services.CreateScope();
+        var sp = scope.ServiceProvider;
+        var authService = sp.GetService<IAuthenticationService>();
+        var accountStore = sp.GetService<IAccountStore>();
+        var emailService = sp.GetService<IEmailService>();
+        var calendarService = sp.GetService<ICalendarService>();
+        var storageService = sp.GetService<IStorageService>();
+        var aiService = sp.GetService<IAIService>();
 
         static void PrintHelp()
         {

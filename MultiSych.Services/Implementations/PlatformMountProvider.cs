@@ -4,7 +4,9 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+#if WINDOWS
 using DokanNet;
+#endif
 using Microsoft.EntityFrameworkCore;
 using MultiSych.Services.Data;
 using MultiSych.Services.Interfaces;
@@ -60,30 +62,25 @@ namespace MultiSych.Services.Implementations
                 Directory.CreateDirectory(targetPath);
             }
 
+#if WINDOWS
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
                 return await MountWindowsAsync(mountPoint, targetPath);
-            }
-            else
-            {
-                return await MountLinuxAsync(mountPoint, targetPath);
-            }
+#endif
+            return await MountLinuxAsync(mountPoint, targetPath);
         }
 
         public async Task<bool> UnmountAsync(string mountPoint)
         {
             _logger.Information("Unmounting {MountPoint}", mountPoint);
 
+#if WINDOWS
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
                 return await UnmountWindowsAsync(mountPoint);
-            }
-            else
-            {
-                return await UnmountLinuxAsync(mountPoint);
-            }
+#endif
+            return await UnmountLinuxAsync(mountPoint);
         }
 
+#if WINDOWS
         private async Task<bool> MountWindowsAsync(string driveLetter, string targetPath)
         {
             try
@@ -127,12 +124,13 @@ namespace MultiSych.Services.Implementations
                 _logger.Information("Unmounting Dokan volume from {Drive}", letter);
                 var dokan = new Dokan(null);
                 dokan.Unmount(letter);
-                
+
                 return Task.FromResult(true);
             }
             catch (Exception ex) { _logger.Error(ex, "Exception during Windows unmount"); }
             return Task.FromResult(false);
         }
+#endif
 
         private async Task<bool> MountLinuxAsync(string mountPoint, string targetPath)
         {
@@ -145,12 +143,9 @@ namespace MultiSych.Services.Implementations
                     Directory.CreateDirectory(targetPath);
                 }
 
-                // If mountPoint already exists as a folder or a symlink, delete it
-                if (Directory.Exists(mountPoint) || File.Exists(mountPoint))
-                {
-                    try { Directory.Delete(mountPoint, true); } catch { }
-                    try { File.Delete(mountPoint); } catch { }
-                }
+                // Clean up mountPoint if it already exists (including broken symbolic links)
+                try { Directory.Delete(mountPoint, true); } catch { }
+                try { File.Delete(mountPoint); } catch { }
 
                 // Create symbolic link from mountPoint to targetPath
                 Directory.CreateSymbolicLink(mountPoint, targetPath);
@@ -220,14 +215,11 @@ namespace MultiSych.Services.Implementations
                     watcher.Dispose();
                 }
 
-                if (Directory.Exists(mountPoint) || File.Exists(mountPoint))
+                // Clean up mountPoint if it already exists (including broken symbolic links)
+                try { Directory.Delete(mountPoint, false); }
+                catch
                 {
-                    // Symbolic link behaves as a file or empty directory in Directory.Delete
-                    try { Directory.Delete(mountPoint, false); }
-                    catch
-                    {
-                        try { File.Delete(mountPoint); } catch { }
-                    }
+                    try { File.Delete(mountPoint); } catch { }
                 }
                 
                 return Task.FromResult(true);
@@ -239,7 +231,117 @@ namespace MultiSych.Services.Implementations
             return Task.FromResult(false);
         }
 
-        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, FileSystemWatcher> _activeWatchers = new();
+        public void RevealInFileManager(string path)
+        {
+            try
+            {
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                    Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                    Process.Start(new ProcessStartInfo { FileName = "xdg-open", ArgumentList = { path }, UseShellExecute = false });
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                    Process.Start(new ProcessStartInfo { FileName = "open", ArgumentList = { path }, UseShellExecute = false });
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning(ex, "Failed to reveal {Path} in file manager", path);
+            }
+        }
+
+        public async Task UpdateLocalMountFolderAsync(string accountId, string targetPath)
+        {
+            try
+            {
+                _logger.Information("Updating local mount folder {TargetPath} for account {AccountId} from DB.", targetPath, accountId);
+
+                // Mount klasörü kullanıcı tarafından silinmiş olabilir. Bu durumda hem aşağıdaki
+                // dosya işlemleri hem de FileSystemWatcher'ın yeniden etkinleştirilmesi
+                // "No such file or directory" (dosyası veya klasörü yok) hatası fırlatır.
+                // Klasörü her döngüde garanti altına alarak bu tekrarlayan hatayı önlüyoruz.
+                if (!Directory.Exists(targetPath))
+                {
+                    Directory.CreateDirectory(targetPath);
+                }
+
+                var watcher = _activeWatchers.Values.FirstOrDefault(w => string.Equals(w.Path, targetPath, StringComparison.OrdinalIgnoreCase));
+                if (watcher != null) watcher.EnableRaisingEvents = false;
+
+                try
+                {
+                    using var dbContext = _dbContextFactory.CreateDbContext();
+                    var cachedFiles = await dbContext.CloudFiles.Where(f => f.AccountId == accountId).ToListAsync();
+                    var dbPaths = cachedFiles.ToDictionary(f => Path.Combine(targetPath, f.Path.TrimStart('/')).Replace('\\', '/'), f => f, StringComparer.OrdinalIgnoreCase);
+
+                    if (Directory.Exists(targetPath))
+                    {
+                        var localFiles = Directory.GetFiles(targetPath, "*", SearchOption.AllDirectories);
+                        var localDirs = Directory.GetDirectories(targetPath, "*", SearchOption.AllDirectories);
+
+                        var pendingQueuePaths = await dbContext.SyncQueueItems
+                            .Where(q => q.AccountId == accountId && !q.IsProcessed)
+                            .Select(q => q.LocalFilePath)
+                            .ToListAsync();
+
+                        var pendingQueueSet = new HashSet<string>(pendingQueuePaths, StringComparer.OrdinalIgnoreCase);
+
+                        foreach (var lf in localFiles)
+                        {
+                            var cleanLf = lf.Replace('\\', '/');
+                            if (!dbPaths.ContainsKey(cleanLf) && !pendingQueueSet.Contains(cleanLf))
+                            {
+                                try { File.Delete(lf); } catch { }
+                            }
+                        }
+
+                        foreach (var ld in localDirs.OrderByDescending(d => d.Length))
+                        {
+                            var cleanLd = ld.Replace('\\', '/');
+                            if (!dbPaths.ContainsKey(cleanLd))
+                            {
+                                try { Directory.Delete(ld, true); } catch { }
+                            }
+                        }
+                    }
+
+                    foreach (var file in cachedFiles.OrderBy(f => f.Path.Length))
+                    {
+                        var localPath = Path.Combine(targetPath, file.Path.TrimStart('/')).Replace('\\', '/');
+                        var localDir = Path.GetDirectoryName(localPath);
+                        if (!string.IsNullOrEmpty(localDir) && !Directory.Exists(localDir))
+                        {
+                            Directory.CreateDirectory(localDir);
+                        }
+
+                        if (file.IsDirectory)
+                        {
+                            if (!Directory.Exists(localPath)) Directory.CreateDirectory(localPath);
+                        }
+                        else
+                        {
+                            if (!File.Exists(localPath))
+                            {
+                                try { await File.WriteAllBytesAsync(localPath, Array.Empty<byte>()); } catch { }
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    // Watcher yalnızca izlediği dizin hâlâ mevcutsa yeniden etkinleştirilebilir.
+                    if (watcher != null && Directory.Exists(targetPath))
+                    {
+                        try { watcher.EnableRaisingEvents = true; }
+                        catch (Exception ex) { _logger.Warning(ex, "Failed to re-enable file watcher for {TargetPath}", targetPath); }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Error updating local mount folder for account {AccountId}", accountId);
+            }
+        }
+
+        internal static readonly System.Collections.Concurrent.ConcurrentDictionary<string, FileSystemWatcher> _activeWatchers = new();
 
         private async Task HandleUnixFileCreatedAsync(string targetPath, string fullPath)
         {
@@ -321,11 +423,95 @@ namespace MultiSych.Services.Implementations
                 var existing = await dbContext.CloudFiles.FirstOrDefaultAsync(f => f.AccountId == accountId && f.Path == relativePath);
                 if (existing == null) return;
 
+                bool hasConflict = false;
+                string conflictStrategy = _runtimeSyncSettings?.ConflictResolutionStrategy ?? "KeepBoth";
+
+                if (!existing.FileId.StartsWith("temp_"))
+                {
+                    try
+                    {
+                        var cloudFile = await _storageService.GetFileAsync(credentials, existing.FileId);
+                        if (cloudFile != null && (cloudFile.ModifiedDate - existing.UpdatedAt).TotalSeconds > 2.0)
+                        {
+                            _logger.Warning("Unix watcher: Conflict detected for {FileName}. Cloud version modified at {CloudTime}, Local version opened with last known update time {LocalTime}.", existing.FileName, cloudFile.ModifiedDate, existing.UpdatedAt);
+                            hasConflict = true;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Warning(ex, "Unix watcher: Failed to fetch cloud file metadata for conflict checking of {FileName}. Assuming no conflict.", existing.FileName);
+                    }
+                }
+
+                if (hasConflict)
+                {
+                    if (conflictStrategy == "ServerWins")
+                    {
+                        _logger.Information("Unix watcher: Conflict resolution strategy is ServerWins. Discarding local changes for {FileName}.", existing.FileName);
+                        try { File.Delete(fullPath); } catch { }
+                        return;
+                    }
+                    else if (conflictStrategy == "KeepBoth")
+                    {
+                        _logger.Information("Unix watcher: Conflict resolution strategy is KeepBoth. Renaming local version of {FileName}.", existing.FileName);
+                        
+                        var directoryPath = Path.GetDirectoryName(relativePath)?.Replace("\\", "/");
+                        if (string.IsNullOrEmpty(directoryPath)) directoryPath = "/";
+                        if (!directoryPath.EndsWith("/")) directoryPath += "/";
+
+                        var origNameWithoutExt = Path.GetFileNameWithoutExtension(relativePath);
+                        var ext = Path.GetExtension(relativePath);
+                        var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                        var newFileName = $"{origNameWithoutExt} (Local Conflict {timestamp}){ext}";
+                        var newRelativePath = directoryPath + newFileName;
+                        var newFullPath = Path.Combine(targetPath, newRelativePath.TrimStart('/')).Replace('\\', '/');
+
+                        try
+                        {
+                            var watcher = _activeWatchers.Values.FirstOrDefault(w => string.Equals(w.Path, targetPath, StringComparison.OrdinalIgnoreCase));
+                            if (watcher != null) watcher.EnableRaisingEvents = false;
+                            
+                            File.Move(fullPath, newFullPath, true);
+                            
+                            if (watcher != null) watcher.EnableRaisingEvents = true;
+
+                            fullPath = newFullPath;
+                            relativePath = newRelativePath;
+
+                            var fileInfo = new System.IO.FileInfo(fullPath);
+                            var parentId = existing.ParentId;
+                            var newFileEntity = new CloudFileEntity
+                            {
+                                AccountId = accountId,
+                                FileId = "temp_" + Guid.NewGuid().ToString("N"),
+                                FileName = newFileName,
+                                Path = relativePath,
+                                ParentId = parentId,
+                                MimeType = "application/octet-stream",
+                                FileSize = fileInfo.Length,
+                                IsDirectory = false,
+                                Provider = credentials.Provider ?? string.Empty,
+                                CreatedAt = DateTime.UtcNow,
+                                UpdatedAt = DateTime.UtcNow
+                            };
+                            dbContext.CloudFiles.Add(newFileEntity);
+                            await dbContext.SaveChangesAsync();
+                            
+                            existing = newFileEntity;
+                        }
+                        catch (Exception moveEx)
+                        {
+                            _logger.Error(moveEx, "Unix watcher: Failed to rename local file during KeepBoth conflict resolution for {FileName}", existing.FileName);
+                            return;
+                        }
+                    }
+                }
+
                 _logger.Information("Unix watcher: Local file modified: {Path}. Uploading change.", relativePath);
                 var cloudId = await _storageService.UploadFileAsync(credentials, fullPath, existing.ParentId ?? "root");
 
-                var fileInfo = new System.IO.FileInfo(fullPath);
-                existing.FileSize = fileInfo.Length;
+                var fileInfoFinal = new System.IO.FileInfo(fullPath);
+                existing.FileSize = fileInfoFinal.Length;
                 existing.UpdatedAt = DateTime.UtcNow;
                 if (!string.IsNullOrEmpty(cloudId))
                 {

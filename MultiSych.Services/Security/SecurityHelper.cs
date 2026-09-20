@@ -110,7 +110,7 @@ namespace MultiSych.Services.Security
                 Console.Write("Enter startup password: ");
                 var entered = ReadPassword();
                 Console.WriteLine();
-                if (entered != storedPassword)
+                if (!ValidatePassword(security, entered))
                 {
                     Console.WriteLine("Invalid startup password.");
                     return false;
@@ -127,7 +127,7 @@ namespace MultiSych.Services.Security
 
                 Console.Write("Enter 2FA code: ");
                 var code = Console.ReadLine()?.Trim() ?? string.Empty;
-                if (!ValidateTotpCode(security.TwoFactorSecret, code))
+                if (!ValidateTwoFactorCode(security, code))
                 {
                     Console.WriteLine("Invalid 2FA code.");
                     return false;
@@ -135,6 +135,23 @@ namespace MultiSych.Services.Security
             }
 
             return true;
+        }
+
+        public static bool ValidatePassword(SecuritySettings security, string enteredPassword)
+        {
+            var storedPassword = Environment.GetEnvironmentVariable("MULTISYCH_STARTUP_PASSWORD") ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(storedPassword))
+                return false;
+
+            return string.Equals(storedPassword, enteredPassword, StringComparison.Ordinal);
+        }
+
+        public static bool ValidateTwoFactorCode(SecuritySettings security, string enteredCode)
+        {
+            if (string.IsNullOrWhiteSpace(security.TwoFactorSecret))
+                return false;
+
+            return ValidateTotpCode(security.TwoFactorSecret, enteredCode);
         }
 
         public static string ReadPassword()
@@ -347,6 +364,63 @@ namespace MultiSych.Services.Security
                     // Ignore permission fix failures on unsupported platforms.
                 }
             }
+        }
+
+        public static byte[] EncryptBytes(byte[] plaintext, string password)
+        {
+            if (plaintext == null) throw new ArgumentNullException(nameof(plaintext));
+            if (string.IsNullOrEmpty(password)) throw new ArgumentNullException(nameof(password));
+
+            var salt = new byte[16];
+            RandomNumberGenerator.Fill(salt);
+
+            var derived = Rfc2898DeriveBytes.Pbkdf2(password, salt, 10000, HashAlgorithmName.SHA256, 48);
+            var key = derived[..32];
+            var iv = derived[32..48];
+
+            using var aes = Aes.Create();
+            aes.Key = key;
+            aes.IV = iv;
+
+            using var ms = new MemoryStream();
+            ms.Write(salt, 0, salt.Length);
+            ms.Write(iv, 0, iv.Length);
+
+            using (var cs = new CryptoStream(ms, aes.CreateEncryptor(), CryptoStreamMode.Write))
+            {
+                cs.Write(plaintext, 0, plaintext.Length);
+                cs.FlushFinalBlock();
+            }
+
+            return ms.ToArray();
+        }
+
+        public static byte[] DecryptBytes(byte[] ciphertext, string password)
+        {
+            if (ciphertext == null) throw new ArgumentNullException(nameof(ciphertext));
+            if (string.IsNullOrEmpty(password)) throw new ArgumentNullException(nameof(password));
+            if (ciphertext.Length < 32) throw new InvalidOperationException("Ciphertext is too short.");
+
+            var salt = new byte[16];
+            var iv = new byte[16];
+            Buffer.BlockCopy(ciphertext, 0, salt, 0, 16);
+            Buffer.BlockCopy(ciphertext, 16, iv, 0, 16);
+
+            var derived = Rfc2898DeriveBytes.Pbkdf2(password, salt, 10000, HashAlgorithmName.SHA256, 32);
+            var key = derived;
+
+            using var aes = Aes.Create();
+            aes.Key = key;
+            aes.IV = iv;
+
+            using var ms = new MemoryStream();
+            using (var cs = new CryptoStream(ms, aes.CreateDecryptor(), CryptoStreamMode.Write))
+            {
+                cs.Write(ciphertext, 32, ciphertext.Length - 32);
+                cs.FlushFinalBlock();
+            }
+
+            return ms.ToArray();
         }
     }
 }

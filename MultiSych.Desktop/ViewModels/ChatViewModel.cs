@@ -10,7 +10,6 @@ using Avalonia.Threading;
 using MultiSych.Services.Interfaces;
 using MultiSych.Services.Configuration;
 using MultiSych.Services.Models;
-using ReactiveUI;
 
 namespace MultiSych.Desktop.ViewModels;
 
@@ -44,31 +43,36 @@ public class ChatViewModel : ViewModelBase
     private readonly MultiSychConfig _config;
     private readonly IAudioRecordingService _audioRecordingService;
     private readonly ISpeechService _speechService;
+    private readonly MultiSych.Desktop.Services.IWindowService _windowService;
+    private readonly IUnifiedSearchService _unifiedSearch;
     private string _inputText = string.Empty;
     private bool _isBusy;
+    private bool _isDataAwareMode;
     private bool _isRecording;
     private bool _isSpeechModelLoaded;
     private string _tempAudioFilePath = string.Empty;
 
     public ObservableCollection<ChatUIMessage> Messages { get; } = [];
 
-    public ChatViewModel(IAIService aiService, MultiSychConfig config, IAudioRecordingService audioRecordingService, ISpeechService speechService)
+    public ChatViewModel(IAIService aiService, MultiSychConfig config, IAudioRecordingService audioRecordingService, ISpeechService speechService, MultiSych.Desktop.Services.IWindowService windowService, IEventBus eventBus, IUnifiedSearchService unifiedSearch)
     {
         _aiService = aiService;
         _config = config;
         _audioRecordingService = audioRecordingService;
         _speechService = speechService;
+        _windowService = windowService;
+        _unifiedSearch = unifiedSearch;
         SendCommand = new RelayCommand(async _ => await SendMessageAsync(), _ => !string.IsNullOrWhiteSpace(InputText) && !IsBusy);
         ToggleRecordingCommand = new RelayCommand(async _ => await ToggleRecordingAsync(), _ => !IsBusy);
+        ToggleDataModeCommand = new RelayCommand(_ => IsDataAwareMode = !IsDataAwareMode);
 
-        MessageBus.Current.Listen<string>("PartialTranscription")
-            .Subscribe(text =>
+        eventBus.Subscribe<PartialTranscriptionEvent>(e =>
+        {
+            if (IsRecording)
             {
-                if (IsRecording)
-                {
-                    Dispatcher.UIThread.Post(() => InputText = text);
-                }
-            });
+                Dispatcher.UIThread.Post(() => InputText = e.Text);
+            }
+        });
 
         // Başlangıç mesajı
         var initialMessage = new ChatUIMessage { IsUser = false };
@@ -110,8 +114,22 @@ public class ChatViewModel : ViewModelBase
 
     public string RecordButtonText => IsRecording ? "⏹️" : "🎤";
 
+    /// <summary>Açıkken mesajlar düz AI yerine "Verilerinle Sohbet" (RAG) moduna yönlenir.</summary>
+    public bool IsDataAwareMode
+    {
+        get => _isDataAwareMode;
+        set
+        {
+            if (SetProperty(ref _isDataAwareMode, value))
+                OnPropertyChanged(nameof(DataModeButtonText));
+        }
+    }
+
+    public string DataModeButtonText => IsDataAwareMode ? "🗂️ Verilerim: Açık" : "🗂️ Verilerim: Kapalı";
+
     public ICommand SendCommand { get; }
     public ICommand ToggleRecordingCommand { get; }
+    public ICommand ToggleDataModeCommand { get; }
 
     private async Task SendMessageAsync()
     {
@@ -130,17 +148,28 @@ public class ChatViewModel : ViewModelBase
         {
             var provider = _config.AI?.DefaultProvider ?? "hybrid";
 
-            // Son 10 mesajı context olarak al
-            var conversationHistory = Messages
-                .TakeLast(10)
-                .Select(m => string.Join(Environment.NewLine, m.Segments.Select(s => s is TextSegment ts ? ts.Text : (s as CodeSegment)?.Code ?? "")))
-                .ToList();
+            string response;
+            if (IsDataAwareMode)
+            {
+                // "Verilerinle Sohbet": şifreli cache'te ara, bulunan kayıtları AI'ye bağlam
+                // olarak ver ve kaynak referanslı cevabı göster.
+                var answer = await _unifiedSearch.AskAsync(userText, provider);
+                response = FormatUnifiedAnswer(answer);
+            }
+            else
+            {
+                // Son 10 mesajı context olarak al
+                var conversationHistory = Messages
+                    .TakeLast(10)
+                    .Select(m => string.Join(Environment.NewLine, m.Segments.Select(s => s is TextSegment ts ? ts.Text : (s as CodeSegment)?.Code ?? "")))
+                    .ToList();
 
-            var response = await _aiService.SendMessageAsync(userText, conversationHistory, provider);
-            
+                response = await _aiService.SendMessageAsync(userText, conversationHistory, provider);
+            }
+
             var aiMessage = new ChatUIMessage { IsUser = false };
             Dispatcher.UIThread.Post(() => Messages.Add(aiMessage));
-            
+
             // AI Cevabını daktilo efekti ile ekrana yansıt ve bitene kadar UI'ın meşgul (IsBusy) kalmasını sağla
             await TypewriterEffectAsync(aiMessage, response);
         }
@@ -158,7 +187,33 @@ public class ChatViewModel : ViewModelBase
             IsBusy = false;
         }
     }
-    
+
+    /// <summary>RAG cevabını, altında numaralı kaynak listesiyle birlikte metne dönüştürür.</summary>
+    private static string FormatUnifiedAnswer(UnifiedAnswer answer)
+    {
+        if (answer.Sources.Count == 0)
+            return answer.Answer;
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine(answer.Answer);
+        sb.AppendLine();
+        sb.AppendLine("— Kaynaklar —");
+        for (int i = 0; i < answer.Sources.Count; i++)
+        {
+            var s = answer.Sources[i];
+            var icon = s.Type switch
+            {
+                SearchSourceType.Email => "✉️",
+                SearchSourceType.File => "📄",
+                SearchSourceType.CalendarEvent => "📅",
+                _ => "•"
+            };
+            var dateStr = s.Date.HasValue ? s.Date.Value.ToLocalTime().ToString("dd.MM.yyyy") : "";
+            sb.AppendLine($"[{i + 1}] {icon} {s.Title} {(string.IsNullOrEmpty(dateStr) ? "" : $"({dateStr})")}");
+        }
+        return sb.ToString();
+    }
+
     private async Task TypewriterEffectAsync(ChatUIMessage message, string rawText)
     {
         var segments = ParseSegments(rawText);
@@ -269,6 +324,17 @@ public class ChatViewModel : ViewModelBase
                     IsBusy = false;
                 }
             }
+        }
+        catch (MultiSych.Services.Exceptions.DependencyMissingException dmEx)
+        {
+            _speechService.StopRealTimeTranscription();
+            if (IsRecording) await _audioRecordingService.StopRecordingAsync();
+            IsRecording = false;
+            IsBusy = false;
+
+            await _windowService.ShowMessageDialogAsync(
+                "Ses Kaydedici Eksik / Audio Recorder Missing",
+                $"{dmEx.Message}");
         }
         catch (Exception ex)
         {

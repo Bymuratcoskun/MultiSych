@@ -1,3 +1,4 @@
+#if WINDOWS
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -198,6 +199,107 @@ public class CloudVirtualFileSystem : IDokanOperations
         return DokanResult.Success;
     }
 
+    private void EnsureLocalTempPath(FileContext ctx, string fileName)
+    {
+        if (!string.IsNullOrEmpty(ctx.LocalTempPath) && File.Exists(ctx.LocalTempPath))
+            return;
+
+        var cacheFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MultiSych", "Cache", _accountId);
+        if (!Directory.Exists(cacheFolder))
+        {
+            Directory.CreateDirectory(cacheFolder);
+        }
+        var localCachePath = Path.Combine(cacheFolder, ctx.FileId);
+
+        using var dbContext = _dbContextFactory.CreateDbContext();
+        var fileEntity = dbContext.CloudFiles.FirstOrDefault(f => f.AccountId == _accountId && f.FileId == ctx.FileId);
+        
+        var useEncryption = string.Equals(Environment.GetEnvironmentVariable("MULTISYCH_ENCRYPT_STORAGE"), "true", StringComparison.OrdinalIgnoreCase);
+        var storagePassword = Environment.GetEnvironmentVariable("MULTISYCH_STORAGE_PASSWORD");
+
+        if (!ctx.FileId.StartsWith("temp_"))
+        {
+            var cacheFileExists = File.Exists(localCachePath);
+            if (!cacheFileExists)
+            {
+                var accountEntity = dbContext.Accounts.FirstOrDefault(a => a.AccountId == _accountId);
+                if (accountEntity == null) throw new InvalidOperationException("Account not found.");
+
+                var credentials = new AccountCredentials 
+                {
+                    AccountId = accountEntity.AccountId, Email = accountEntity.Email, Provider = accountEntity.Provider,
+                    AccessToken = accountEntity.AccessToken, RefreshToken = accountEntity.RefreshToken, ExpiresAt = accountEntity.ExpiresAt
+                };
+
+                _logger.Information("On-Demand Download triggered (Cache Miss) for file {FileName}", fileName);
+                
+                var tempFilePath = Path.GetTempFileName();
+                try
+                {
+                    var cloudStream = _storageService.DownloadFileAsync(credentials, ctx.FileId).GetAwaiter().GetResult();
+                    using (var tempWriter = new FileStream(tempFilePath, FileMode.Create, System.IO.FileAccess.Write, System.IO.FileShare.None))
+                    {
+                        cloudStream.CopyTo(tempWriter);
+                    }
+
+                    if (File.Exists(localCachePath))
+                    {
+                        File.Delete(localCachePath);
+                    }
+
+                    if (useEncryption && !string.IsNullOrEmpty(storagePassword))
+                    {
+                        var plaintextBytes = File.ReadAllBytes(tempFilePath);
+                        var encryptedBytes = MultiSych.Services.Security.SecurityHelper.EncryptBytes(plaintextBytes, storagePassword);
+                        File.WriteAllBytes(localCachePath, encryptedBytes);
+                        try { File.Delete(tempFilePath); } catch { }
+                    }
+                    else
+                    {
+                        File.Move(tempFilePath, localCachePath);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning(ex, "Failed to download from cloud. Checking if stale cache is available.");
+                    if (File.Exists(tempFilePath))
+                    {
+                        try { File.Delete(tempFilePath); } catch { }
+                    }
+                    if (!File.Exists(localCachePath))
+                    {
+                        throw;
+                    }
+                }
+            }
+        }
+
+        if (ctx.FileId.StartsWith("temp_"))
+        {
+            ctx.LocalTempPath = Path.GetTempFileName();
+        }
+        else if (useEncryption && !string.IsNullOrEmpty(storagePassword) && File.Exists(localCachePath))
+        {
+            try
+            {
+                var encryptedBytes = File.ReadAllBytes(localCachePath);
+                var decryptedBytes = MultiSych.Services.Security.SecurityHelper.DecryptBytes(encryptedBytes, storagePassword);
+                var tempPlaintextPath = Path.GetTempFileName();
+                File.WriteAllBytes(tempPlaintextPath, decryptedBytes);
+                ctx.LocalTempPath = tempPlaintextPath;
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Failed to decrypt local cache file {FileId}", ctx.FileId);
+                throw;
+            }
+        }
+        else
+        {
+            ctx.LocalTempPath = localCachePath;
+        }
+    }
+
     public NtStatus ReadFile(string fileName, byte[] buffer, out int bytesRead, long offset, IDokanFileInfo info)
     {
         bytesRead = 0;
@@ -205,75 +307,8 @@ public class CloudVirtualFileSystem : IDokanOperations
 
         try
         {
-            // Persistent Cache (Kalıcı Önbellek) kontrolü ve optimizasyonu
-            var cacheFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MultiSych", "Cache", _accountId);
-            if (!Directory.Exists(cacheFolder))
-            {
-                Directory.CreateDirectory(cacheFolder);
-            }
-            var localCachePath = Path.Combine(cacheFolder, ctx.FileId);
+            EnsureLocalTempPath(ctx, fileName);
 
-            using var dbContext = _dbContextFactory.CreateDbContext();
-            var fileEntity = dbContext.CloudFiles.FirstOrDefault(f => f.AccountId == _accountId && f.FileId == ctx.FileId);
-            var expectedSize = fileEntity?.FileSize ?? 0;
-
-            var cacheFileExists = File.Exists(localCachePath);
-            var cacheSizeMatches = cacheFileExists && new System.IO.FileInfo(localCachePath).Length == expectedSize;
-
-            if (string.IsNullOrEmpty(ctx.LocalTempPath) || !File.Exists(ctx.LocalTempPath))
-            {
-                if (!cacheFileExists || !cacheSizeMatches)
-                {
-                    var accountEntity = dbContext.Accounts.FirstOrDefault(a => a.AccountId == _accountId);
-                    if (accountEntity == null) return DokanResult.AccessDenied;
-                    
-                    var credentials = new AccountCredentials 
-                    {
-                        AccountId = accountEntity.AccountId, Email = accountEntity.Email, Provider = accountEntity.Provider,
-                        AccessToken = accountEntity.AccessToken, RefreshToken = accountEntity.RefreshToken, ExpiresAt = accountEntity.ExpiresAt
-                    };
-
-                    _logger.Information("On-Demand Download triggered (Cache Miss) for file {FileName}", fileName);
-                    
-                    string? tempFilePath = null;
-                    try
-                    {
-                        var cloudStream = _storageService.DownloadFileAsync(credentials, ctx.FileId).GetAwaiter().GetResult();
-                        
-                        tempFilePath = Path.GetTempFileName();
-                        using (var tempWriter = new FileStream(tempFilePath, FileMode.Create, System.IO.FileAccess.Write, System.IO.FileShare.None))
-                        {
-                            cloudStream.CopyTo(tempWriter);
-                        }
-                        
-                        if (File.Exists(localCachePath))
-                        {
-                            File.Delete(localCachePath);
-                        }
-                        File.Move(tempFilePath, localCachePath);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.Warning(ex, "Failed to download from cloud. Checking if stale cache is available.");
-                        if (tempFilePath != null && File.Exists(tempFilePath))
-                        {
-                            try { File.Delete(tempFilePath); } catch { }
-                        }
-                        if (!File.Exists(localCachePath))
-                        {
-                            throw;
-                        }
-                    }
-                }
-                else
-                {
-                    _logger.Information("Cache HIT for file {FileName}, reading from persistent local cache.", fileName);
-                }
-
-                ctx.LocalTempPath = localCachePath;
-            }
-
-            // Her read işleminde dosyayı kilitlenmeyecek şekilde açıp kapatıyoruz (Disposable)
             using (var fs = new FileStream(ctx.LocalTempPath, FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.ReadWrite))
             {
                 if (fs.CanSeek) fs.Position = offset;
@@ -327,6 +362,26 @@ public class CloudVirtualFileSystem : IDokanOperations
                         var path = GetCleanPath(fileName);
                         var fileEntity = dbContext.CloudFiles.FirstOrDefault(f => f.AccountId == _accountId && f.Path == path);
 
+                        var cacheFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MultiSych", "Cache", _accountId);
+                        var persistentCachePath = Path.Combine(cacheFolder, fileEntity?.FileId ?? ctx.FileId);
+                        
+                        var useEncryption = string.Equals(Environment.GetEnvironmentVariable("MULTISYCH_ENCRYPT_STORAGE"), "true", StringComparison.OrdinalIgnoreCase);
+                        var storagePassword = Environment.GetEnvironmentVariable("MULTISYCH_STORAGE_PASSWORD");
+                        
+                        var persistentDir = Path.GetDirectoryName(persistentCachePath);
+                        if (!string.IsNullOrEmpty(persistentDir)) Directory.CreateDirectory(persistentDir);
+                        
+                        if (useEncryption && !string.IsNullOrEmpty(storagePassword))
+                        {
+                            var plaintextBytes = File.ReadAllBytes(ctx.LocalTempPath);
+                            var encryptedBytes = MultiSych.Services.Security.SecurityHelper.EncryptBytes(plaintextBytes, storagePassword);
+                            File.WriteAllBytes(persistentCachePath, encryptedBytes);
+                        }
+                        else
+                        {
+                            File.Copy(ctx.LocalTempPath, persistentCachePath, true);
+                        }
+
                         bool hasConflict = false;
                         string conflictStrategy = _runtimeSyncSettings?.ConflictResolutionStrategy ?? "KeepBoth";
 
@@ -356,7 +411,7 @@ public class CloudVirtualFileSystem : IDokanOperations
                                 {
                                     EvictLocalCache(fileEntity.FileId);
                                 }
-                                return; // Do not upload
+                                return;
                             }
                             else if (conflictStrategy == "KeepBoth")
                             {
@@ -405,7 +460,6 @@ public class CloudVirtualFileSystem : IDokanOperations
                             }
                         }
 
-                        // Normal upload behavior
                         var uploadedFileId = _storageService.UploadFileAsync(credentials, ctx.LocalTempPath, parentId).GetAwaiter().GetResult();
 
                         var fileInfoNormal = new System.IO.FileInfo(ctx.LocalTempPath);
@@ -417,7 +471,7 @@ public class CloudVirtualFileSystem : IDokanOperations
                                 dbContext.CloudFiles.Remove(fileEntity);
                                 dbContext.SaveChanges();
 
-                                dbContext.CloudFiles.Add(new CloudFileEntity
+                                var finalFileEntity = new CloudFileEntity
                                 {
                                     AccountId = _accountId,
                                     FileId = uploadedFileId,
@@ -430,7 +484,16 @@ public class CloudVirtualFileSystem : IDokanOperations
                                     Provider = accountEntity.Provider ?? string.Empty,
                                     CreatedAt = DateTime.UtcNow,
                                     UpdatedAt = DateTime.UtcNow
-                                });
+                                };
+                                dbContext.CloudFiles.Add(finalFileEntity);
+                                dbContext.SaveChanges();
+
+                                var oldEncryptedCachePath = Path.Combine(cacheFolder, fileEntity.FileId);
+                                var newEncryptedCachePath = Path.Combine(cacheFolder, uploadedFileId);
+                                if (File.Exists(oldEncryptedCachePath))
+                                {
+                                    try { File.Move(oldEncryptedCachePath, newEncryptedCachePath, true); } catch { }
+                                }
                             }
                             else
                             {
@@ -440,8 +503,8 @@ public class CloudVirtualFileSystem : IDokanOperations
                                 {
                                     fileEntity.FileId = uploadedFileId;
                                 }
+                                dbContext.SaveChanges();
                             }
-                            dbContext.SaveChanges();
                         }
                     }
                 }
@@ -455,17 +518,8 @@ public class CloudVirtualFileSystem : IDokanOperations
                         var fileEntity = queueDb.CloudFiles.FirstOrDefault(f => f.AccountId == _accountId && f.Path == relativePath);
                         var parentId = GetParentIdFromPath(relativePath) ?? "root";
 
-                        // Cache path
                         var cacheFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MultiSych", "Cache", _accountId);
-                        var persistentCachePath = Path.Combine(cacheFolder, fileEntity?.FileId ?? "temp_" + Guid.NewGuid().ToString("N"));
-                        
-                        // Copy to persistent cache if it's not already there
-                        if (ctx.LocalTempPath != persistentCachePath && File.Exists(ctx.LocalTempPath))
-                        {
-                            var persistentDir = Path.GetDirectoryName(persistentCachePath);
-                            if (!string.IsNullOrEmpty(persistentDir)) Directory.CreateDirectory(persistentDir);
-                            File.Copy(ctx.LocalTempPath, persistentCachePath, true);
-                        }
+                        var persistentCachePath = Path.Combine(cacheFolder, fileEntity?.FileId ?? ctx.FileId);
 
                         queueDb.SyncQueueItems.Add(new SyncQueueItemEntity
                         {
@@ -487,7 +541,6 @@ public class CloudVirtualFileSystem : IDokanOperations
                 }
             }
 
-            // Önbellek dosyasını silip kaynakları temizle (Kalıcı önbellek dışındaki temp dosyalarını temizle)
             if (!string.IsNullOrEmpty(ctx.LocalTempPath) && File.Exists(ctx.LocalTempPath))
             {
                 var cacheRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MultiSych", "Cache");
@@ -817,15 +870,7 @@ public class CloudVirtualFileSystem : IDokanOperations
 
         try
         {
-            if (string.IsNullOrEmpty(ctx.LocalTempPath))
-            {
-                var cacheFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MultiSych", "Cache", _accountId);
-                if (!Directory.Exists(cacheFolder))
-                {
-                    Directory.CreateDirectory(cacheFolder);
-                }
-                ctx.LocalTempPath = Path.Combine(cacheFolder, ctx.FileId);
-            }
+            EnsureLocalTempPath(ctx, fileName);
 
             using (var fs = new FileStream(ctx.LocalTempPath, FileMode.OpenOrCreate, System.IO.FileAccess.Write, System.IO.FileShare.ReadWrite))
             {
@@ -952,3 +997,4 @@ public class CloudVirtualFileSystem : IDokanOperations
         return parent?.FileId;
     }
 }
+#endif

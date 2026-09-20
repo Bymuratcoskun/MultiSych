@@ -16,4 +16,10 @@ public class EmailMessageEntity : BaseEntity
     public bool IsAnalyzedForEvents { get; set; }
     public DateTime ReceivedAt { get; set; }
     public string Provider { get; set; } = string.Empty;
+    public string? AiSummary { get; set; }
+    public string? AiCategory { get; set; }
+    public bool IsArchived { get; set; } = false;
 }
+
+
+

@@ -41,10 +41,38 @@ namespace MultiSych.Services.Implementations
             }
             else
             {
+                var requiredCommand = RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? "arecord" : "ffmpeg";
+                if (!IsCommandAvailable(requiredCommand))
+                {
+                    var installCmd = RuntimeInformation.IsOSPlatform(OSPlatform.Linux) 
+                        ? "sudo apt install alsa-utils ffmpeg" 
+                        : "brew install ffmpeg";
+                    throw new MultiSych.Services.Exceptions.DependencyMissingException(
+                        requiredCommand, 
+                        installCmd, 
+                        $"Audio recording dependency '{requiredCommand}' is missing in system PATH. Please install it using: {installCmd}");
+                }
                 StartUnixRecording(outputPath);
             }
             
             IsRecording = true;
+        }
+
+        private bool IsCommandAvailable(string command)
+        {
+            var pathEnv = Environment.GetEnvironmentVariable("PATH");
+            if (string.IsNullOrEmpty(pathEnv)) return false;
+
+            var paths = pathEnv.Split(Path.PathSeparator);
+            foreach (var path in paths)
+            {
+                var fullPath = Path.Combine(path, command);
+                if (File.Exists(fullPath))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private void StartWindowsRecording(string outputPath)

@@ -87,6 +87,7 @@ public class AuthenticationService : IAuthenticationService
 
         return new AccountCredentials
         {
+            AccountId = Guid.NewGuid().ToString(),
             Provider = "Google",
             Email = email ?? "unknown@google.com",
             AccessToken = accessToken ?? string.Empty,
@@ -129,6 +130,7 @@ public class AuthenticationService : IAuthenticationService
 
         return new AccountCredentials
         {
+            AccountId = Guid.NewGuid().ToString(),
             Provider = "Microsoft",
             Email = email ?? "unknown@microsoft",
             AccessToken = result.AccessToken,
@@ -184,6 +186,7 @@ public class AuthenticationService : IAuthenticationService
 
         return new AccountCredentials
         {
+            AccountId = Guid.NewGuid().ToString(),
             Provider = "Yandex",
             Email = email ?? "unknown@yandex",
             AccessToken = accessToken ?? string.Empty,

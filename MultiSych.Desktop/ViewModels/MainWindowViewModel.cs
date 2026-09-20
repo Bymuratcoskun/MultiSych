@@ -3,8 +3,8 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Windows.Input;
 using Avalonia.Threading;
-using ReactiveUI;
 using IWindowService = MultiSych.Desktop.Services.IWindowService;
+using MultiSych.Desktop.Services;
 using MultiSych.Services.Configuration;
 using MultiSych.Services.Interfaces;
 
@@ -32,6 +32,15 @@ public class MainWindowViewModel : ViewModelBase
     private string _statusMessage = "Ready.";
     private string _selectedSection = "Dashboard";
 
+    // Sync progress overlay
+    private bool _isSyncing;
+    private string _syncProgressFileName = string.Empty;
+    private double _syncProgressPercent;
+    private string _syncTransferSpeed = string.Empty;
+
+    // Conflict resolution panel
+    private ConflictResolutionViewModel? _conflictPanel;
+
     public ObservableCollection<string> Themes { get; } = ["Modern", "Retro", "Sade"];
     public ObservableCollection<string> IconStyles { get; } = ["Modern", "Retro", "Sade"];
     public ObservableCollection<NavigationItem> NavigationItems { get; } = [];
@@ -52,6 +61,8 @@ public class MainWindowViewModel : ViewModelBase
     public ErrorReportViewModel ErrorReportPage { get; }
     public SettingsViewModel SettingsPage { get; }
     public ChatViewModel ChatPage { get; }
+    public EmailViewModel EmailPage { get; }
+    public DocumentsViewModel DocumentsPage { get; }
 
     public object CurrentPageViewModel
     {
@@ -84,6 +95,8 @@ public class MainWindowViewModel : ViewModelBase
         ErrorReportPage = services.GetService(typeof(ErrorReportViewModel)) as ErrorReportViewModel ?? throw new InvalidOperationException("ErrorReportViewModel is missing in DI.");
         SettingsPage = services.GetService(typeof(SettingsViewModel)) as SettingsViewModel ?? throw new InvalidOperationException("SettingsViewModel is missing in DI.");
         ChatPage = services.GetService(typeof(ChatViewModel)) as ChatViewModel ?? throw new InvalidOperationException("ChatViewModel is missing in DI.");
+        EmailPage = services.GetService(typeof(EmailViewModel)) as EmailViewModel ?? throw new InvalidOperationException("EmailViewModel is missing in DI.");
+        DocumentsPage = services.GetService(typeof(DocumentsViewModel)) as DocumentsViewModel ?? throw new InvalidOperationException("DocumentsViewModel is missing in DI.");
 
         RefreshCommand = new RelayCommand(async _ => await RefreshCurrentPageAsync());
         NavigateCommand = new RelayCommand(section => Navigate(section?.ToString() ?? string.Empty));
@@ -99,20 +112,62 @@ public class MainWindowViewModel : ViewModelBase
         CurrentPageViewModel = DashboardPage;
 
         // Arka plandan veya sesli asistandan gelen komutları dinleyerek sekmeyi ve bildirimleri güncelle
-        MessageBus.Current.Listen<string>("NavigationIntent")
-            .Subscribe(section => 
+        var eventBus = services.GetService(typeof(IEventBus)) as IEventBus;
+        eventBus?.Subscribe<NavigationIntentEvent>(e =>
+            Dispatcher.UIThread.Post(() => Navigate(e.Section)));
+
+        eventBus?.Subscribe<NotificationIntentEvent>(e =>
+            Dispatcher.UIThread.Post(() =>
+                _windowService.ShowNotification("Sesli Komut", e.Message, NotificationSound.Success)));
+
+        // Sync progress overlay — IAppStatusService (UI mesajları) + IEventBus (dosya ilerlemesi)
+        var appStatusService = services.GetService(typeof(IAppStatusService)) as IAppStatusService;
+        if (appStatusService != null)
+        {
+            appStatusService.StatusChanged += update => Dispatcher.UIThread.Post(() =>
             {
-                Dispatcher.UIThread.Post(() => Navigate(section));
+                StatusMessage = update.Message;
+                IsSyncing = update.IsSyncing;
             });
-            
-        MessageBus.Current.Listen<string>("NotificationIntent")
-            .Subscribe(message => 
+        }
+
+        // Conflict Resolution — IEventBus aboneliği (yukarıda çözülen eventBus yeniden kullanılıyor)
+        if (eventBus != null)
+        {
+            // Sync progress
+            eventBus.Subscribe<SyncProgressEvent>(ev => Dispatcher.UIThread.Post(() =>
             {
-                Dispatcher.UIThread.Post(() => 
+                if (string.IsNullOrEmpty(ev.FileName))
                 {
-                    _windowService.ShowNotification("Sesli Komut", message, MultiSych.Desktop.Services.NotificationSound.Success);
-                });
+                    // Sync tamamlandı
+                    IsSyncing = false;
+                    SyncProgressPercent = 0;
+                    SyncProgressFileName = string.Empty;
+                    SyncTransferSpeed = string.Empty;
+                    StatusMessage = $"Senkronizasyon tamamlandı — {ev.ProcessedItems} öğe işlendi.";
+                }
+                else
+                {
+                    IsSyncing = true;
+                    SyncProgressFileName = ev.FileName;
+                    SyncProgressPercent = ev.Percent;
+                    SyncTransferSpeed = $"{ev.ProcessedItems}/{ev.TotalItems}";
+                    StatusMessage = $"{ev.FileName} yükleniyor…";
+                }
+            }));
+
+            // Conflict resolution
+            ConflictPanel = new ConflictResolutionViewModel(eventBus);
+            ConflictPanel.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(ConflictResolutionViewModel.HasItems))
+                    OnPropertyChanged(nameof(HasConflicts));
+            };
+            eventBus.Subscribe<FileConflictDetectedEvent>(ev =>
+            {
+                Dispatcher.UIThread.Post(() => ConflictPanel.AddConflict(ev));
             });
+        }
     }
 
     public string SelectedTheme
@@ -141,6 +196,36 @@ public class MainWindowViewModel : ViewModelBase
         set => SetProperty(ref _statusMessage, value);
     }
 
+    // Sync progress overlay properties
+    public bool IsSyncing
+    {
+        get => _isSyncing;
+        set => SetProperty(ref _isSyncing, value);
+    }
+    public string SyncProgressFileName
+    {
+        get => _syncProgressFileName;
+        set => SetProperty(ref _syncProgressFileName, value);
+    }
+    public double SyncProgressPercent
+    {
+        get => _syncProgressPercent;
+        set => SetProperty(ref _syncProgressPercent, value);
+    }
+    public string SyncTransferSpeed
+    {
+        get => _syncTransferSpeed;
+        set => SetProperty(ref _syncTransferSpeed, value);
+    }
+
+    // Conflict resolution panel
+    public ConflictResolutionViewModel? ConflictPanel
+    {
+        get => _conflictPanel;
+        set => SetProperty(ref _conflictPanel, value);
+    }
+    public bool HasConflicts => _conflictPanel != null && _conflictPanel.HasItems;
+
     public string SelectedSection
     {
         get => _selectedSection;
@@ -150,12 +235,14 @@ public class MainWindowViewModel : ViewModelBase
             {
                 StatusMessage = $"Selected {value}.";
                 UpdateCurrentPage();
+                UpdateSelectedNavigation();
             }
         }
     }
 
     private void Navigate(string section)
     {
+        Console.WriteLine($"[NAVIGATE DEBUG] Section: '{section}'");
         if (string.IsNullOrWhiteSpace(section))
             return;
 
@@ -175,6 +262,8 @@ public class MainWindowViewModel : ViewModelBase
             "Logs" => ErrorReportPage,
             "Settings" => SettingsPage,
             "Chat" => ChatPage,
+            "Mail" => EmailPage,
+            "Documents" => DocumentsPage,
             _ => DashboardPage
         };
     }
@@ -190,6 +279,8 @@ public class MainWindowViewModel : ViewModelBase
             new NavigationItem("AI", GetIconGlyph("AI")),
             new NavigationItem("Analyzer", GetIconGlyph("Analyzer")),
             new NavigationItem("Explorer", GetIconGlyph("Explorer")),
+            new NavigationItem("Mail", GetIconGlyph("Mail")),
+            new NavigationItem("Documents", GetIconGlyph("Documents")),
             new NavigationItem("Logs", GetIconGlyph("Logs")),
             new NavigationItem("Settings", GetIconGlyph("Settings")),
             new NavigationItem("Chat", GetIconGlyph("Chat"))
@@ -221,6 +312,8 @@ public class MainWindowViewModel : ViewModelBase
                 "AI" => "⚡",
                 "Analyzer" => "▤",
                 "Explorer" => "◫",
+                "Mail" => "✉",
+                "Documents" => "▤",
                 "Logs" => "⚠",
                 "Settings" => "⚙",
                 "Chat" => "✉",
@@ -234,6 +327,8 @@ public class MainWindowViewModel : ViewModelBase
                 "AI" => "★",
                 "Analyzer" => "▤",
                 "Explorer" => "▤",
+                "Mail" => "✉",
+                "Documents" => "▤",
                 "Logs" => "▤",
                 "Settings" => "⛭",
                 "Chat" => "✉",
@@ -247,6 +342,8 @@ public class MainWindowViewModel : ViewModelBase
                 "AI" => "🤖",
                 "Analyzer" => "📄",
                 "Explorer" => "📁",
+                "Mail" => "📧",
+                "Documents" => "📝",
                 "Logs" => "🐛",
                 "Settings" => "⚙️",
                 "Chat" => "💬",

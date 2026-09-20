@@ -9,7 +9,6 @@ using MultiSych.Services.Configuration;
 using MultiSych.Services.Interfaces;
 using MultiSych.Services.Security;
 using Avalonia.Threading;
-using ReactiveUI;
 
 namespace MultiSych.Desktop.ViewModels;
 
@@ -21,6 +20,8 @@ public class AIChatViewModel : ViewModelBase
     private readonly ISpeechService _speechService;
     private readonly IWindowService _windowService;
     private readonly IAudioRecordingService _audioRecordingService;
+    private readonly IUnifiedSearchService _unifiedSearch;
+    private bool _isDataAwareMode;
     private string _currentMessage = string.Empty;
     private string _selectedModel = "default";
     private string _settingsStatus = "Ready";
@@ -40,6 +41,7 @@ public class AIChatViewModel : ViewModelBase
         _speechService = services.GetService(typeof(ISpeechService)) as ISpeechService ?? throw new InvalidOperationException("Speech service is missing");
         _windowService = services.GetService(typeof(IWindowService)) as IWindowService ?? throw new InvalidOperationException("Window service is missing");
         _audioRecordingService = services.GetService(typeof(IAudioRecordingService)) as IAudioRecordingService ?? throw new InvalidOperationException("Audio recording service is missing");
+        _unifiedSearch = services.GetService(typeof(IUnifiedSearchService)) as IUnifiedSearchService ?? throw new InvalidOperationException("Unified search service is missing");
 
         ProviderDisplayName = provider switch
         {
@@ -61,14 +63,14 @@ public class AIChatViewModel : ViewModelBase
         ToggleAutoTtsCommand = new RelayCommand(_ => IsAutoTtsEnabled = !IsAutoTtsEnabled);
         ClearChatCommand = new RelayCommand(_ => ClearChat());
 
-        MessageBus.Current.Listen<string>("PartialTranscription")
-            .Subscribe(text =>
+        var eventBus = services.GetService(typeof(IEventBus)) as IEventBus;
+        eventBus?.Subscribe<PartialTranscriptionEvent>(e =>
+        {
+            if (IsRecording)
             {
-                if (IsRecording)
-                {
-                    Dispatcher.UIThread.Post(() => CurrentMessage = text);
-                }
-            });
+                Dispatcher.UIThread.Post(() => CurrentMessage = e.Text);
+            }
+        });
     }
 
     public ICommand SendMessageCommand { get; }
@@ -147,6 +149,19 @@ public class AIChatViewModel : ViewModelBase
         }
     }
 
+    /// <summary>Açıkken mesajlar "Verilerinle Sohbet" (RAG) moduna yönlenir.</summary>
+    public bool IsDataAwareMode
+    {
+        get => _isDataAwareMode;
+        set
+        {
+            if (SetProperty(ref _isDataAwareMode, value))
+                OnPropertyChanged(nameof(DataModeButtonText));
+        }
+    }
+
+    public string DataModeButtonText => IsDataAwareMode ? "🗂️ Verilerim: Açık" : "🗂️ Verilerim: Kapalı";
+
     public ObservableCollection<ChatMessage> ChatMessages { get; }
 
     public string CurrentMessage
@@ -174,7 +189,17 @@ public class AIChatViewModel : ViewModelBase
 
         try
         {
-            var response = await _aiService.SendMessageAsync(messageToSend, new List<string>(), Provider);
+            string response;
+            if (IsDataAwareMode)
+            {
+                // "Verilerinle Sohbet": şifreli cache'te ara + kaynak referanslı AI cevabı.
+                var answer = await _unifiedSearch.AskAsync(messageToSend, Provider);
+                response = FormatUnifiedAnswer(answer);
+            }
+            else
+            {
+                response = await _aiService.SendMessageAsync(messageToSend, new List<string>(), Provider);
+            }
             ChatMessages.Add(new ChatMessage(ProviderDisplayName, response, false));
             SettingsStatus = "Message delivered.";
             
@@ -198,6 +223,32 @@ public class AIChatViewModel : ViewModelBase
     {
         ChatMessages.Clear();
         SettingsStatus = "Chat history cleared.";
+    }
+
+    /// <summary>RAG cevabını, altında numaralı kaynak listesiyle birlikte metne dönüştürür.</summary>
+    private static string FormatUnifiedAnswer(MultiSych.Services.Models.UnifiedAnswer answer)
+    {
+        if (answer.Sources.Count == 0)
+            return answer.Answer;
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine(answer.Answer);
+        sb.AppendLine();
+        sb.AppendLine("— Kaynaklar —");
+        for (int i = 0; i < answer.Sources.Count; i++)
+        {
+            var s = answer.Sources[i];
+            var icon = s.Type switch
+            {
+                MultiSych.Services.Models.SearchSourceType.Email => "✉️",
+                MultiSych.Services.Models.SearchSourceType.File => "📄",
+                MultiSych.Services.Models.SearchSourceType.CalendarEvent => "📅",
+                _ => "•"
+            };
+            var dateStr = s.Date.HasValue ? s.Date.Value.ToLocalTime().ToString("dd.MM.yyyy") : "";
+            sb.AppendLine($"[{i + 1}] {icon} {s.Title} {(string.IsNullOrEmpty(dateStr) ? "" : $"({dateStr})")}");
+        }
+        return sb.ToString();
     }
 
     private async Task ToggleRecordingAsync()
@@ -239,6 +290,17 @@ public class AIChatViewModel : ViewModelBase
                     try { if (File.Exists(_tempAudioFilePath)) File.Delete(_tempAudioFilePath); } catch { }
                 }
             }
+        }
+        catch (MultiSych.Services.Exceptions.DependencyMissingException dmEx)
+        {
+            SettingsStatus = $"Audio operation failed: {dmEx.Message}";
+            _speechService.StopRealTimeTranscription();
+            if (IsRecording) await _audioRecordingService.StopRecordingAsync();
+            IsRecording = false;
+
+            await _windowService.ShowMessageDialogAsync(
+                "Ses Kaydedici Eksik / Audio Recorder Missing",
+                $"{dmEx.Message}");
         }
         catch (Exception ex)
         {

@@ -182,5 +182,98 @@ namespace MultiSych.Tests
                 )
             );
         }
+
+        [Fact]
+        public async Task ExtractTextFromMultimodalAsync_AudioMimeType_ShouldUseGeminiAndTranscribeAudio()
+        {
+            // Arrange
+            var config = new MultiSychConfig
+            {
+                AI = new AISettings
+                {
+                    GeminiApiKey = "gemini_key_123"
+                }
+            };
+
+            var factory = CreateMockHttpClientFactory(request =>
+            {
+                Assert.Contains("generativelanguage.googleapis.com", request.RequestUri!.ToString());
+                var requestContent = request.Content!.ReadAsStringAsync().Result;
+                Assert.Contains("Transcribe the following audio recording verbatim", requestContent);
+                Assert.Contains("audio/mp3", requestContent);
+
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        "{ \"candidates\": [ { \"content\": { \"parts\": [ { \"text\": \"Audio Transcription Text\" } ] } } ] }",
+                        System.Text.Encoding.UTF8,
+                        "application/json"
+                    )
+                };
+            });
+
+            var service = new AIService(factory.Object, config);
+
+            // Act
+            var response = await service.ExtractTextFromMultimodalAsync(new byte[] { 1, 2, 3 }, "audio/mp3", "hybrid");
+
+            // Assert
+            Assert.Equal("Audio Transcription Text", response);
+        }
+
+        [Fact]
+        public async Task ExtractEventsFromDocumentAsync_ValidResponse_ShouldParseEvents()
+        {
+            // Arrange
+            var config = new MultiSychConfig
+            {
+                AI = new AISettings
+                {
+                    GeminiApiKey = "gemini_key_123"
+                }
+            };
+
+            var jsonResponse = @"[
+                {
+                    ""title"": ""Proje Teslim Toplantısı"",
+                    ""description"": ""Yapay zeka ile döküman analizi teslimi"",
+                    ""location"": ""Online Microsoft Teams"",
+                    ""startTime"": ""2026-07-01T14:00:00Z"",
+                    ""endTime"": ""2026-07-01T15:00:00Z"",
+                    ""isAllDay"": false
+                }
+            ]";
+
+            var factory = CreateMockHttpClientFactory(request =>
+            {
+                Assert.Contains("generativelanguage.googleapis.com", request.RequestUri!.ToString());
+                var requestContent = request.Content!.ReadAsStringAsync().Result;
+                Assert.Contains("potansiyel takvim etkinliklerini", requestContent);
+
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        $"{{ \"candidates\": [ {{ \"content\": {{ \"parts\": [ {{ \"text\": {System.Text.Json.JsonSerializer.Serialize(jsonResponse)} }} ] }} }} ] }}",
+                        System.Text.Encoding.UTF8,
+                        "application/json"
+                    )
+                };
+            });
+
+            var service = new AIService(factory.Object, config);
+
+            // Act
+            var events = await service.ExtractEventsFromDocumentAsync("Önemli toplantı 1 Temmuz 14:00'da.", "hybrid");
+
+            // Assert
+            Assert.Single(events);
+            var ev = events[0];
+            Assert.Equal("Proje Teslim Toplantısı", ev.Title);
+            Assert.Equal("Yapay zeka ile döküman analizi teslimi", ev.Description);
+            Assert.Equal("Online Microsoft Teams", ev.Location);
+            Assert.Equal(new DateTime(2026, 07, 01, 14, 0, 0, DateTimeKind.Utc), ev.StartTime.ToUniversalTime());
+            Assert.Equal(new DateTime(2026, 07, 01, 15, 0, 0, DateTimeKind.Utc), ev.EndTime.ToUniversalTime());
+            Assert.False(ev.IsAllDay);
+        }
     }
 }

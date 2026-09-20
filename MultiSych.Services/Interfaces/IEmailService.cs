@@ -10,6 +10,7 @@ namespace MultiSych.Services.Interfaces
         Task<EmailMessage> GetEmailAsync(AccountCredentials credentials, string messageId);
         Task SendEmailAsync(AccountCredentials credentials, EmailMessage message);
         Task<bool> DeleteEmailAsync(AccountCredentials credentials, string messageId);
+        Task<bool> DeleteEmailFromServerOnlyAsync(AccountCredentials credentials, string messageId);
         Task MarkAsReadAsync(AccountCredentials credentials, string messageId);
         Task MarkAsUnreadAsync(AccountCredentials credentials, string messageId);
         Task SyncEmailsAsync(AccountCredentials credentials);

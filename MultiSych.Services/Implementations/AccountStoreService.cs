@@ -22,7 +22,60 @@ namespace MultiSych.Services.Implementations
             _dbContextFactory = dbContextFactory;
 
             using var context = _dbContextFactory.CreateDbContext();
-            context.Database.EnsureCreated();
+            InitializeDatabase(context);
+        }
+
+        /// <summary>
+        /// Veritabanı şemasını güvenli şekilde başlatır. Migrations klasörü mevcut;
+        /// EnsureCreated migration'ları atlar ve model değiştiğinde "no such table"
+        /// hatalarına yol açar. Ancak eski sürümler DB'yi EnsureCreated ile oluşturmuştu,
+        /// dolayısıyla tablolar var ama __EFMigrationsHistory tablosu yok — böyle bir
+        /// DB'de doğrudan Migrate() "table already exists" hatası verir. Bu metod, eski
+        /// EnsureCreated veritabanlarını tespit edip mevcut şemayı migration geçmişine
+        /// "baseline" olarak işaretler, ardından bekleyen migration'ları uygular.
+        /// </summary>
+        private void InitializeDatabase(LocalCacheDbContext context)
+        {
+            var db = context.Database;
+            try
+            {
+                var applied = db.GetAppliedMigrations().ToList();
+                var pending = db.GetPendingMigrations().ToList();
+
+                // Migration geçmişi boş ama zaten tablolar varsa: eski EnsureCreated DB'si.
+                if (applied.Count == 0 && pending.Count > 0 && LegacySchemaExists(db))
+                {
+                    _logger.Warning("Eski EnsureCreated veritabanı tespit edildi. Mevcut şema migration geçmişine baseline olarak işaretleniyor.");
+                    db.ExecuteSqlRaw(@"CREATE TABLE IF NOT EXISTS ""__EFMigrationsHistory"" (""MigrationId"" TEXT NOT NULL CONSTRAINT ""PK___EFMigrationsHistory"" PRIMARY KEY, ""ProductVersion"" TEXT NOT NULL);");
+                    foreach (var migrationId in pending)
+                    {
+                        db.ExecuteSqlRaw(@"INSERT OR IGNORE INTO ""__EFMigrationsHistory"" (""MigrationId"", ""ProductVersion"") VALUES ({0}, {1});", migrationId, "9.0.0");
+                    }
+                }
+
+                // Taze DB → tüm migration'ları uygular; baseline'lanmış eski DB → yalnızca
+                // gelecekteki yeni migration'ları uygular.
+                db.Migrate();
+            }
+            catch (System.Exception ex)
+            {
+                _logger.Error(ex, "Veritabanı başlatılamadı (migration). Uygulama şema olmadan hatalı çalışabilir.");
+                throw;
+            }
+        }
+
+        /// <summary>Ana tablonun (Accounts) zaten var olup olmadığını kontrol eder.</summary>
+        private static bool LegacySchemaExists(Microsoft.EntityFrameworkCore.Infrastructure.DatabaseFacade db)
+        {
+            try
+            {
+                db.ExecuteSqlRaw(@"SELECT 1 FROM ""Accounts"" LIMIT 1;");
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         public async Task<List<AccountCredentials>> GetAccountsAsync()

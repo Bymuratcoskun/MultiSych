@@ -35,5 +35,15 @@ namespace MultiSych.Services.Interfaces
         /// Summarize document content
         /// </summary>
         Task<string> SummarizeDocumentAsync(string content, string provider = "hybrid");
+
+        /// <summary>
+        /// Extract text from multimodal source (image, pdf) using AI OCR
+        /// </summary>
+        Task<string> ExtractTextFromMultimodalAsync(byte[] fileBytes, string mimeType, string provider = "hybrid");
+
+        /// <summary>
+        /// Extract potential calendar events from document content
+        /// </summary>
+        Task<List<CalendarEvent>> ExtractEventsFromDocumentAsync(string documentText, string provider = "hybrid");
     }
 }

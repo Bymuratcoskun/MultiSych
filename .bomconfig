@@ -1,0 +1,26 @@
+{
+  "AutoFix": true,
+  "BackupEnabled": true,
+  "StrictOfflineMode": true,
+  "TabSize": 4,
+  "ExcludedExtensions": [
+    ".exe",
+    ".dll",
+    ".png",
+    ".jpg",
+    ".zip"
+  ],
+  "CustomRules": {},
+  "EnabledModules": {
+    "AutoLogger": true,
+    "SqliteLogger": false,
+    "EntropyScanner": true
+  },
+  "AiTemperature": 0.2,
+  "HasSeenWelcomeTour": true,
+  "AiProvider": "OpenAI",
+  "OllamaEndpoint": "http://localhost:11434",
+  "OllamaModel": "qwen2.5-coder:7b",
+  "EncryptedApiKey": "",
+  "AccentColor": "#89B4FA"
+}

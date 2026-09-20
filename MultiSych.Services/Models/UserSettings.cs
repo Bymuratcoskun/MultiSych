@@ -7,4 +7,5 @@ public class UserSettings
     public bool StartMinimized { get; set; } = false;
     public string Language { get; set; } = "English";
     public string Theme { get; set; } = "Modern";
+    public string AccentColor { get; set; } = string.Empty; // boşsa tema varsayılanı kullanılır
 }

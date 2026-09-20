@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -53,16 +52,16 @@ public class VirtualDriveService : IVirtualDriveService, IDisposable
             {
                 _mountedDrives[accountId] = drivePath;
                 _logger.Information("Successfully mounted {Provider} drive for {Email} at {MountPoint}", account.Provider, account.Email, drivePath);
-                
-                // OS Dosya Yöneticisinde (File Explorer) otomatik açma
+
+                // OS Dosya Yöneticisinde (File Explorer) otomatik açma — gerçek Process.Start
+                // çağrısı IPlatformMountProvider'a taşındı (bkz. docs/KARARLAR.md K11): bu metod
+                // burada doğrudan Process.Start çağırıyordu ve IPlatformMountProvider mock'landığı
+                // hâlde testlerde GERÇEKTEN çalışıyordu — dotnet test her koşumda geliştiricinin
+                // gerçek masaüstünde var olmayan bir klasörü açmaya çalışıp 3 hata penceresi
+                // açtırıyordu (VirtualDriveServiceTests: 3 test "acc_1" ile MountAsync=true mock'luyor).
                 try
                 {
-                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                        Process.Start(new ProcessStartInfo { FileName = drivePath, UseShellExecute = true });
-                    else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-                        Process.Start(new ProcessStartInfo { FileName = "xdg-open", ArgumentList = { targetFolder }, UseShellExecute = false });
-                    else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-                        Process.Start(new ProcessStartInfo { FileName = "open", ArgumentList = { targetFolder }, UseShellExecute = false });
+                    _mountProvider.RevealInFileManager(RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? drivePath : targetFolder);
                 }
                 catch (Exception ex)
                 {

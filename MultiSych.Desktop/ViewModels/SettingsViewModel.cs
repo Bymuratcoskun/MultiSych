@@ -15,6 +15,8 @@ using MultiSych.Services.Interfaces;
 
 namespace MultiSych.Desktop.ViewModels;
 
+public record AccentColorOption(string Hex, string Name);
+
 public class SettingsViewModel : ViewModelBase
 {
     private readonly MultiSychConfig _config;
@@ -26,6 +28,7 @@ public class SettingsViewModel : ViewModelBase
     private string _liveLogs = "Loading logs...";
     private string _selectedLanguage;
     private string _selectedTheme;
+    private string _selectedAccentColor;
     private bool _isLogPaused;
     private bool _startMinimized;
     private bool _enableNotificationSounds;
@@ -39,8 +42,20 @@ public class SettingsViewModel : ViewModelBase
         _scopeFactory = scopeFactory;
         AvailableLanguages = ["English", "Türkçe"];
         AvailableThemes = ["Modern", "Retro", "Sade"];
+        AccentColors =
+        [
+            new AccentColorOption("#7F5AFA", "Mor (Varsayılan)"),
+            new AccentColorOption("#00BCD4", "Turkuaz"),
+            new AccentColorOption("#4CAF50", "Zümrüt"),
+            new AccentColorOption("#2196F3", "Mavi"),
+            new AccentColorOption("#FF5722", "Mercan"),
+            new AccentColorOption("#E91E63", "Pembe"),
+            new AccentColorOption("#FFC107", "Altın"),
+            new AccentColorOption("#9C27B0", "Eflatun"),
+        ];
         SaveCommand = new RelayCommand(async _ => await SaveSettingsAsync());
-        
+        SelectAccentColorCommand = new RelayCommand(hex => { if (hex is string h) SelectedAccentColor = h; });
+
         ToggleLogPauseCommand = new RelayCommand(_ => IsLogPaused = !IsLogPaused);
         ClearLogCommand = new RelayCommand(_ => LiveLogs = "Loglar temizlendi.");
         BackupDatabaseCommand = new RelayCommand(async _ => await BackupDatabaseAsync());
@@ -49,6 +64,9 @@ public class SettingsViewModel : ViewModelBase
 
         _selectedLanguage = _userSettingsService.Settings.Language;
         _selectedTheme = _userSettingsService.Settings.Theme;
+        _selectedAccentColor = string.IsNullOrEmpty(_userSettingsService.Settings.AccentColor)
+            ? "#7F5AFA"
+            : _userSettingsService.Settings.AccentColor;
         _startMinimized = _userSettingsService.Settings.StartMinimized;
         _enableNotificationSounds = _userSettingsService.Settings.EnableNotificationSounds;
         StartLogWatcher();
@@ -56,6 +74,17 @@ public class SettingsViewModel : ViewModelBase
 
     public ObservableCollection<string> AvailableLanguages { get; }
     public ObservableCollection<string> AvailableThemes { get; }
+    public List<AccentColorOption> AccentColors { get; }
+
+    public string SelectedAccentColor
+    {
+        get => _selectedAccentColor;
+        set
+        {
+            if (SetProperty(ref _selectedAccentColor, value))
+                App.ApplyAccentColor(value);
+        }
+    }
 
     public int SyncIntervalMinutes
     {
@@ -174,6 +203,7 @@ public class SettingsViewModel : ViewModelBase
     }
 
     public ICommand SaveCommand { get; }
+    public ICommand SelectAccentColorCommand { get; }
 
     public string LiveLogs
     {
@@ -217,6 +247,7 @@ public class SettingsViewModel : ViewModelBase
             // Arayüz ve kullanıcı ayarlarını JSON'a kaydet
             _userSettingsService.Settings.Language = SelectedLanguage;
             _userSettingsService.Settings.Theme = SelectedTheme;
+            _userSettingsService.Settings.AccentColor = SelectedAccentColor;
             _userSettingsService.Settings.StartMinimized = StartMinimized;
             _userSettingsService.Settings.EnableNotificationSounds = EnableNotificationSounds;
             await _userSettingsService.SaveAsync();

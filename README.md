@@ -1,6 +1,6 @@
 # MultiSych - Evrensel Senkronizasyon ve Yapay Zeka Asistanı 🚀
 
-MultiSych, Google, Microsoft ve Yandex bulut hesaplarınızı tek bir merkezden yönetmenizi sağlayan, yapay zeka (AI) destekli, %100 açık kaynaklı ve uçtan uca şifreli, çapraz platform (Windows/Linux/macOS) bir masaüstü asistanıdır.
+MultiSych, Google, Microsoft ve Yandex bulut hesaplarınızı tek bir merkezden yönetmenizi sağlayan, yapay zeka (AI) destekli, %100 açık kaynaklı ve uçtan uca şifreli, **Linux öncelikli** (GTK4/libadwaita) bir masaüstü asistanıdır.
 
 Arayüzünden arka plan görevlerine, yerel ses işlemeden bulut senkronizasyonuna kadar .NET 10 teknolojisinin sınırlarını zorlayan MultiSych ile veri yönetimini yepyeni bir seviyeye taşıyın!
 
@@ -29,9 +29,9 @@ En güçlü yapay zeka modelleri MultiSych'in merkezinde!
 ### 4. İnternetsiz Ses İşleme (Whisper AI)
 Gizliliğinize önem veriyoruz! Sesli komut veya dikte özelliği kullanmak istediğinizde ses kaydınız hiçbir bulut sunucusuna gönderilmez. `Whisper.net` entegrasyonu sayesinde konuşmalarınız **tamamen çevrimdışı (offline)** olarak bilgisayarınızın içinde metne dönüştürülür.
 
-### 5. Modern ve Akıcı Arayüz (Avalonia UI)
-- **Çapraz Platform:** Avalonia UI altyapısı ile Windows, Linux ve macOS üzerinde aynı şık arayüz deneyimi.
-- **Temalar:** Sade (Light), Modern (Dark) ve Retro temaları arasında çalışma zamanında kesintisiz geçiş.
+### 5. Modern ve Akıcı Arayüz (GTK4 / libadwaita)
+- **Yerel Linux Deneyimi:** GTK4 ve libadwaita (Adw) altyapısı ile Linux masaüstünde native, akıcı bir arayüz. Windows desteği deneyseldir.
+- **Temalar:** libadwaita üzerinden Açık (Light) ve Koyu (Dark) renk şeması arasında çalışma zamanında kesintisiz geçiş.
 
 ---
 
@@ -41,7 +41,7 @@ MultiSych, **.NET 10.0 SDK** gerektirir. Sisteminizde yüklü değilse, öncelik
 
 ### 🐧 Linux (Ubuntu, Arch, Manjaro) Kurulumu
 
-Avalonia arayüzünün Linux üzerinde kusursuz çizilebilmesi için sisteminizde bazı temel grafik kütüphanelerinin olması gerekir.
+GTK4 arayüzünün Linux üzerinde kusursuz çizilebilmesi için sisteminizde GTK4 ve libadwaita çalışma zamanı kütüphanelerinin olması gerekir.
 
 1. **Gerekli Kütüphaneleri Yükleyin:**
    ```bash
@@ -77,7 +77,7 @@ dotnet build MultiSych.slnx
 dotnet ef database update --project MultiSych.Services/MultiSych.Services.csproj --startup-project MultiSych.Desktop/MultiSych.Desktop.csproj
 ```
 
-- **Reaktif Programlama:** ReactiveUI ile real-time veri güncellemeleri.
+- **MVVM Deseni:** `INotifyPropertyChanged` tabanlı `ViewModelBase` ve `RelayCommand` ile veri bağlama.
 ---
 
 ## 🚀 Kullanım Rehberi
@@ -137,4 +137,4 @@ MultiSych, sıfırdan .NET 10 standartlarına, MVVM tasarım desenine, Dependenc
 
 Projeyi Fork edebilir, yeni özellikler için Pull Request gönderebilir ve gelişim sürecinin bir parçası olabilirsiniz!
 
-**Geliştirme Ortamı:** C# 13, .NET 10, Avalonia UI, Entity Framework Core, SQLite (SQLCipher), MailKit, NAudio, Whisper.net.
+**Geliştirme Ortamı:** C# 13, .NET 10, GTK4 / libadwaita (GirCore), Entity Framework Core, SQLite (SQLCipher), MailKit, NAudio, Whisper.net.

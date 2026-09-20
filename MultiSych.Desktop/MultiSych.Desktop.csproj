@@ -7,7 +7,19 @@
     <Nullable>enable</Nullable>
     <UseRidGraph>true</UseRidGraph>
     <PublishTrimmed>false</PublishTrimmed>
-    <!-- Force rebuild to clear Avalonia XAML compiler cache -->
+    <!--
+      GirCore1007: GirCore 0.8.0, native GObject tipleri üzerinde doğrudan C#
+      constructor kullanımını (hem alt sınıflama hem doğrudan 'new') topluca
+      deprecate ediyor. View sınıflarımız Gtk.Box/Gtk.Window/Adw.ApplicationWindow'dan
+      türediği için bu desen zorunlu; GirCore'un kararlı yerine-koyma deseni henüz
+      yayınlanmadı. Bu bir korektlik uyarısı değil, ileriye dönük bir migration notu.
+      GirCore kararlı subclass desenini yayınladığında bu bastırma kaldırılmalı.
+    -->
+    <NoWarn>$(NoWarn);GirCore1007</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <DefineConstants>$(DefineConstants);WINDOWS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,27 +27,20 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.*" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
+    <PackageReference Include="GirCore.Adw-1" Version="0.8.0" />
+    <PackageReference Include="GirCore.Gtk-4.0" Version="0.8.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.9" />
-    <PackageReference Include="Avalonia" Version="11.*" />
-    <PackageReference Include="Avalonia.ReactiveUI" Version="11.*" />
-    <PackageReference Include="Avalonia.Desktop" Version="11.*" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.*" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlcipher" Version="2.1.11" />
-    <PackageReference Include="System.IO.Packaging" Version="9.0.0" />
+    <PackageReference Include="System.IO.Packaging" Version="10.0.12" />
     <PackageReference Include="Whisper.net.Runtime" Version="1.9.0" />
-    <PackageReference Include="LiveChartsCore.SkiaSharpView.Avalonia" Version="2.0.0-rc4.5" />
-    <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
-    <PackageReference Include="Clowd.Squirrel" Version="2.11.1" />
-    <PackageReference Include="LibVLCSharp.Avalonia" Version="3.8.5" />
+    <PackageReference Include="Clowd.Squirrel" Version="2.11.1" Condition="$([MSBuild]::IsOSPlatform('Windows'))" />
     <PackageReference Include="DocumentFormat.OpenXml" Version="3.0.2" />
     <PackageReference Include="itext7" Version="8.0.4" />
-    <PackageReference Include="Avalonia.AvaloniaEdit" Version="11.*" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.0">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
   </ItemGroup>

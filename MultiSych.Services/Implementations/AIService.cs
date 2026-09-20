@@ -302,4 +302,215 @@ E-posta İçeriği:
         using var doc = JsonDocument.Parse(responseJson);
         return doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
     }
+
+    public async Task<string> ExtractTextFromMultimodalAsync(byte[] fileBytes, string mimeType, string provider = "hybrid")
+    {
+        var prompt = mimeType.StartsWith("audio/")
+            ? "Transcribe the following audio recording verbatim. Provide only the transcription, without any introductory or concluding comments."
+            : "Extract and transcribe all readable text from this document. Provide only the transcribed text, maintaining its structure where possible. Do not add any introductory or concluding comments.";
+        
+        var selectedProvider = provider?.ToLowerInvariant() ?? "hybrid";
+
+        if (selectedProvider == "hybrid")
+        {
+            var errors = new List<string>();
+
+            // 1. Gemini (supports images and PDF)
+            if (!string.IsNullOrWhiteSpace(_config.AI?.GeminiApiKey))
+            {
+                try
+                {
+                    return await SendToGeminiMultimodalAsync(fileBytes, mimeType, prompt);
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"Gemini multimodal error: {ex.Message}");
+                }
+            }
+
+            // 2. OpenAI / Copilot (supports images)
+            if (!string.IsNullOrWhiteSpace(_config.AI?.CopilotApiKey) && mimeType.StartsWith("image/"))
+            {
+                try
+                {
+                    return await SendToOpenAIMultimodalAsync(fileBytes, mimeType, prompt);
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"OpenAI multimodal error: {ex.Message}");
+                }
+            }
+
+            if (errors.Any())
+            {
+                throw new AggregateException("Hybrid Multimodal AI service failed.", errors.Select(e => new Exception(e)));
+            }
+
+            throw new InvalidOperationException("No multimodal AI providers are configured or compatible with this file type. Please configure Gemini API key.");
+        }
+
+        if (selectedProvider.Contains("gemini"))
+        {
+            return await SendToGeminiMultimodalAsync(fileBytes, mimeType, prompt);
+        }
+
+        if (selectedProvider.Contains("copilot") || selectedProvider.Contains("openai"))
+        {
+            if (mimeType.StartsWith("image/"))
+            {
+                return await SendToOpenAIMultimodalAsync(fileBytes, mimeType, prompt);
+            }
+            throw new NotSupportedException("OpenAI/Copilot does not support PDF or audio files directly. Please use Gemini or hybrid provider.");
+        }
+
+        throw new NotSupportedException($"Provider {selectedProvider} does not support multimodal files.");
+    }
+
+    private async Task<string> SendToGeminiMultimodalAsync(byte[] fileBytes, string mimeType, string prompt)
+    {
+        var apiKey = _config.AI?.GeminiApiKey;
+        if (string.IsNullOrWhiteSpace(apiKey)) return "Gemini API anahtarı ayarlanmamış.";
+
+        using var client = _httpClientFactory.CreateClient();
+        var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={apiKey}";
+
+        var base64Data = Convert.ToBase64String(fileBytes);
+
+        var payload = new
+        {
+            contents = new[]
+            {
+                new
+                {
+                    parts = new object[]
+                    {
+                        new { text = prompt },
+                        new
+                        {
+                            inlineData = new
+                            {
+                                mimeType = mimeType,
+                                data = base64Data
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+        var response = await client.PostAsync(url, content);
+        response.EnsureSuccessStatusCode();
+
+        var responseJson = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(responseJson);
+        
+        return doc.RootElement.GetProperty("candidates")[0].GetProperty("content").GetProperty("parts")[0].GetProperty("text").GetString() ?? "";
+    }
+
+    private async Task<string> SendToOpenAIMultimodalAsync(byte[] fileBytes, string mimeType, string prompt)
+    {
+        var apiKey = _config.AI?.CopilotApiKey;
+        if (string.IsNullOrWhiteSpace(apiKey)) return "Copilot/OpenAI API anahtarı ayarlanmamış.";
+
+        using var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+
+        var base64Data = Convert.ToBase64String(fileBytes);
+        var dataUrl = $"data:{mimeType};base64,{base64Data}";
+
+        var payload = new
+        {
+            model = "gpt-4o",
+            messages = new[]
+            {
+                new
+                {
+                    role = "user",
+                    content = new object[]
+                    {
+                        new { type = "text", text = prompt },
+                        new
+                        {
+                            type = "image_url",
+                            image_url = new
+                            {
+                                url = dataUrl
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+        var response = await client.PostAsync("https://api.openai.com/v1/chat/completions", content);
+        
+        response.EnsureSuccessStatusCode();
+
+        var responseJson = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(responseJson);
+        return doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
+    }
+
+    public async Task<List<CalendarEvent>> ExtractEventsFromDocumentAsync(string documentText, string provider = "hybrid")
+    {
+        if (string.IsNullOrWhiteSpace(documentText)) return new List<CalendarEvent>();
+
+        var promptBuilder = new StringBuilder();
+        promptBuilder.AppendLine("Lütfen aşağıdaki belge içeriğini analiz et ve potansiyel takvim etkinliklerini (toplantı, uçuş, randevu, teslim tarihi, son gün, ödeme günü vb.) çıkar.");
+        promptBuilder.AppendLine("SADECE aşağıdaki formatta geçerli bir JSON dizisi (array) döndür, fazladan hiçbir metin yazma:");
+        promptBuilder.AppendLine(@"[
+  {
+    ""title"": ""Etkinlik Başlığı"",
+    ""description"": ""Kısa açıklama"",
+    ""location"": ""Yer veya Online"",
+    ""startTime"": ""YYYY-MM-DDTHH:mm:ssZ"",
+    ""endTime"": ""YYYY-MM-DDTHH:mm:ssZ"",
+    ""isAllDay"": false
+  }
+]");
+        promptBuilder.AppendLine("Eğer etkinlik yoksa boş bir dizi [] döndür.");
+        promptBuilder.AppendLine("Bugünün tarihi referans olarak: " + DateTime.Today.ToString("yyyy-MM-dd") + "\n");
+        promptBuilder.AppendLine("--- Belge İçeriği ---");
+        promptBuilder.AppendLine(documentText);
+        promptBuilder.AppendLine("--- Belge Sonu ---");
+
+        var aiResponse = await GetResponseAsync(promptBuilder.ToString(), provider);
+        
+        var jsonStr = aiResponse.Trim();
+        if (jsonStr.StartsWith("```json", StringComparison.OrdinalIgnoreCase)) jsonStr = jsonStr.Substring(7);
+        if (jsonStr.StartsWith("```")) jsonStr = jsonStr.Substring(3);
+        if (jsonStr.EndsWith("```")) jsonStr = jsonStr.Substring(0, jsonStr.Length - 3);
+        jsonStr = jsonStr.Trim();
+
+        if (string.IsNullOrWhiteSpace(jsonStr) || jsonStr == "[]") 
+            return new List<CalendarEvent>();
+
+        var foundEvents = new List<CalendarEvent>();
+        try
+        {
+            using var doc = JsonDocument.Parse(jsonStr);
+            foreach (var element in doc.RootElement.EnumerateArray())
+            {
+                var calendarEvent = new CalendarEvent
+                {
+                    EventId = Guid.NewGuid().ToString(),
+                    Title = element.TryGetProperty("title", out var t) ? t.GetString() ?? "Yeni Etkinlik" : "Yeni Etkinlik",
+                    Description = element.TryGetProperty("description", out var d) ? d.GetString() : string.Empty,
+                    Location = element.TryGetProperty("location", out var l) ? l.GetString() : string.Empty,
+                    StartTime = element.TryGetProperty("startTime", out var st) && DateTime.TryParse(st.GetString(), out var sdt) ? sdt : DateTime.UtcNow,
+                    EndTime = element.TryGetProperty("endTime", out var et) && DateTime.TryParse(et.GetString(), out var edt) ? edt : DateTime.UtcNow.AddHours(1),
+                    IsAllDay = element.TryGetProperty("isAllDay", out var iad) && iad.GetBoolean()
+                };
+                foundEvents.Add(calendarEvent);
+            }
+        }
+        catch
+        {
+            // JSON okuma başarısız olursa boş liste döndür
+        }
+
+        return foundEvents;
+    }
 }

@@ -243,14 +243,40 @@ namespace MultiSych.Services.Implementations
                 ApplicationName = "MultiSych"
             });
 
-            // RFC 2822 email construction
-            var rawMessage = $"To: {string.Join(",", message.To ?? new List<string>())}\r\n" +
-                             $"Subject: {message.Subject ?? "No Subject"}\r\n" +
-                             "Content-Type: text/plain; charset=utf-8\r\n\r\n" +
-                             $"{message.Body ?? string.Empty}";
+            var mimeMessage = new MimeKit.MimeMessage();
+            mimeMessage.From.Add(new MimeKit.MailboxAddress(credentials.Email ?? string.Empty, credentials.Email ?? string.Empty));
+            if (message.To != null)
+            {
+                foreach (var to in message.To)
+                {
+                    mimeMessage.To.Add(MimeKit.MailboxAddress.Parse(to));
+                }
+            }
+            mimeMessage.Subject = message.Subject ?? "No Subject";
+
+            var bodyBuilder = new MimeKit.BodyBuilder();
+            if (message.IsHtml)
+                bodyBuilder.HtmlBody = message.Body;
+            else
+                bodyBuilder.TextBody = message.Body;
+
+            if (message.Attachments != null)
+            {
+                foreach (var att in message.Attachments)
+                {
+                    if (att.Content != null)
+                    {
+                        bodyBuilder.Attachments.Add(att.FileName ?? "Attachment", att.Content);
+                    }
+                }
+            }
+            mimeMessage.Body = bodyBuilder.ToMessageBody();
+
+            using var memoryStream = new MemoryStream();
+            await mimeMessage.WriteToAsync(memoryStream);
 
             // Gmail API requires Base64Url encoding
-            var base64UrlEncoded = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(rawMessage))
+            var base64UrlEncoded = Convert.ToBase64String(memoryStream.ToArray())
                 .Replace('+', '-')
                 .Replace('/', '_')
                 .Replace("=", "");
@@ -264,13 +290,22 @@ namespace MultiSych.Services.Implementations
         {
             var endpoint = "https://graph.microsoft.com/v1.0/me/sendMail";
 
+            var attachmentsJson = message.Attachments?.Select(a => new Dictionary<string, object>
+            {
+                { "@odata.type", "#microsoft.graph.fileAttachment" },
+                { "name", a.FileName ?? "Attachment" },
+                { "contentType", a.MimeType ?? "application/octet-stream" },
+                { "contentBytes", a.Content != null ? Convert.ToBase64String(a.Content) : string.Empty }
+            }).ToList();
+
             var payload = new
             {
                 message = new
                 {
                     subject = message.Subject ?? "No Subject",
-                    body = new { contentType = "Text", content = message.Body ?? string.Empty },
-                    toRecipients = message.To?.Select(t => new { emailAddress = new { address = t ?? string.Empty } }).ToList() ?? new()
+                    body = new { contentType = message.IsHtml ? "Html" : "Text", content = message.Body ?? string.Empty },
+                    toRecipients = message.To?.Select(t => new { emailAddress = new { address = t ?? string.Empty } }).ToList() ?? new(),
+                    attachments = attachmentsJson
                 },
                 saveToSentItems = "true"
             };
@@ -302,7 +337,24 @@ namespace MultiSych.Services.Implementations
             }
 
             mimeMessage.Subject = message.Subject ?? "No Subject";
-            mimeMessage.Body = new TextPart(TextFormat.Plain) { Text = message.Body ?? string.Empty };
+            
+            var bodyBuilder = new BodyBuilder();
+            if (message.IsHtml)
+                bodyBuilder.HtmlBody = message.Body;
+            else
+                bodyBuilder.TextBody = message.Body;
+
+            if (message.Attachments != null)
+            {
+                foreach (var att in message.Attachments)
+                {
+                    if (att.Content != null)
+                    {
+                        bodyBuilder.Attachments.Add(att.FileName ?? "Attachment", att.Content);
+                    }
+                }
+            }
+            mimeMessage.Body = bodyBuilder.ToMessageBody();
 
             using var client = new SmtpClient();
             await client.ConnectAsync("smtp.yandex.com", 465, SecureSocketOptions.SslOnConnect);
@@ -491,9 +543,9 @@ namespace MultiSych.Services.Implementations
             return emailMessage;
         }
 
-        public async Task<bool> DeleteEmailAsync(AccountCredentials credentials, string messageId)
+        public async Task<bool> DeleteEmailFromServerOnlyAsync(AccountCredentials credentials, string messageId)
         {
-            _logger.Information("Deleting email {MessageId} from {Provider} for account {Email}", messageId, credentials.Provider, credentials.Email);
+            _logger.Information("Deleting email {MessageId} from {Provider} server for account {Email}", messageId, credentials.Provider, credentials.Email);
 
             if (credentials.Provider == "Google")
             {
@@ -511,6 +563,22 @@ namespace MultiSych.Services.Implementations
             {
                 throw new NotSupportedException($"Provider {credentials.Provider} is not supported for deleting emails.");
             }
+        }
+
+        public async Task<bool> DeleteEmailAsync(AccountCredentials credentials, string messageId)
+        {
+            bool success = await DeleteEmailFromServerOnlyAsync(credentials, messageId);
+            if (success)
+            {
+                await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+                var entity = await dbContext.CachedEmails.FindAsync(credentials.AccountId, messageId);
+                if (entity != null)
+                {
+                    dbContext.CachedEmails.Remove(entity);
+                    await dbContext.SaveChangesAsync();
+                }
+            }
+            return success;
         }
 
         private async Task<bool> DeleteGoogleEmailAsync(AccountCredentials credentials, string messageId)

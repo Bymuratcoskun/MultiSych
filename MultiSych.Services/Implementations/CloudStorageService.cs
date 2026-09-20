@@ -97,6 +97,7 @@ namespace MultiSych.Services.Implementations
                         existing.UpdatedAt = DateTime.UtcNow;
                         existing.ParentId = dbParentId;
                         existing.Path = filePath;
+                        existing.WebEditUrl = file.WebEditUrl;
                     }
                     else
                         dbContext.CloudFiles.Add(new CloudFileEntity
@@ -111,7 +112,8 @@ namespace MultiSych.Services.Implementations
                             CreatedAt = file.CreatedDate,
                             UpdatedAt = file.ModifiedDate,
                             ParentId = dbParentId,
-                            Path = filePath
+                            Path = filePath,
+                            WebEditUrl = file.WebEditUrl
                         });
                 }
 
@@ -175,7 +177,7 @@ namespace MultiSych.Services.Implementations
             var request = service.Files.List();
             // Belirtilen klasördeki silinmemiş dosyaları getirir
             request.Q = $"'{folderId}' in parents and trashed = false";
-            request.Fields = "files(id, name, mimeType, size, createdTime, modifiedTime, owners)";
+            request.Fields = "files(id, name, mimeType, size, createdTime, modifiedTime, owners, webViewLink)";
 
             var response = await request.ExecuteAsync();
 
@@ -189,7 +191,8 @@ namespace MultiSych.Services.Implementations
                 ModifiedDate = f.ModifiedTimeDateTimeOffset?.UtcDateTime ?? DateTime.UtcNow,
                 IsDirectory = f.MimeType == "application/vnd.google-apps.folder",
                 Provider = "Google",
-                AccountId = credentials.AccountId ?? string.Empty
+                AccountId = credentials.AccountId ?? string.Empty,
+                WebEditUrl = f.WebViewLink
             }).ToList() ?? new List<CloudFile>();
         }
 
@@ -230,7 +233,8 @@ namespace MultiSych.Services.Implementations
                         ModifiedDate = item.TryGetProperty("lastModifiedDateTime", out var mDate) ? mDate.GetDateTime() : DateTime.UtcNow,
                         IsDirectory = isFolder,
                         Provider = "Microsoft",
-                        AccountId = credentials.AccountId
+                        AccountId = credentials.AccountId,
+                        WebEditUrl = item.TryGetProperty("webUrl", out var wUrl) ? wUrl.GetString() : null
                     });
                 }
             }
@@ -263,9 +267,12 @@ namespace MultiSych.Services.Implementations
                 foreach (var item in items.EnumerateArray())
                 {
                     var isFolder = item.TryGetProperty("type", out var type) && type.GetString() == "dir";
+                    var pathStr = item.GetProperty("path").GetString() ?? string.Empty;
+                    var cleanPath = pathStr.Replace("disk:", "");
+                    
                     files.Add(new CloudFile
                     {
-                        FileId = item.GetProperty("path").GetString() ?? string.Empty,
+                        FileId = pathStr,
                         FileName = item.GetProperty("name").GetString() ?? string.Empty,
                         MimeType = item.TryGetProperty("mime_type", out var mime) ? (mime.GetString() ?? "application/octet-stream") : (isFolder ? "folder" : "application/octet-stream"),
                         FileSize = item.TryGetProperty("size", out var size) ? size.GetInt64() : 0,
@@ -273,7 +280,8 @@ namespace MultiSych.Services.Implementations
                         ModifiedDate = item.TryGetProperty("modified", out var mDate) ? mDate.GetDateTime() : DateTime.UtcNow,
                         IsDirectory = isFolder,
                         Provider = "Yandex",
-                        AccountId = credentials.AccountId
+                        AccountId = credentials.AccountId,
+                        WebEditUrl = item.TryGetProperty("public_url", out var pUrl) ? pUrl.GetString() : $"https://disk.yandex.com/client/disk{cleanPath}"
                     });
                 }
             }

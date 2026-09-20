@@ -2,13 +2,12 @@ using System;
 using System.Security.Cryptography;
 using System.Windows.Input;
 using System.Threading.Tasks;
-using ReactiveUI;
 using MultiSych.Services.Configuration;
 using MultiSych.Services.Interfaces;
 
 namespace MultiSych.Desktop.ViewModels;
 
-public class AuthViewModel : ReactiveObject
+public class AuthViewModel : ViewModelBase
 {
     private readonly Action<bool> _onAuthComplete;
     private readonly MultiSychConfig _config;
@@ -21,25 +20,25 @@ public class AuthViewModel : ReactiveObject
     public string Password
     {
         get => _password;
-        set => this.RaiseAndSetIfChanged(ref _password, value);
+        set => SetProperty(ref _password, value);
     }
 
     public string TwoFactorCode
     {
         get => _twoFactorCode;
-        set => this.RaiseAndSetIfChanged(ref _twoFactorCode, value);
+        set => SetProperty(ref _twoFactorCode, value);
     }
 
     public string ErrorMessage
     {
         get => _errorMessage;
-        set => this.RaiseAndSetIfChanged(ref _errorMessage, value);
+        set => SetProperty(ref _errorMessage, value);
     }
 
     public bool RememberMe
     {
         get => _rememberMe;
-        set => this.RaiseAndSetIfChanged(ref _rememberMe, value);
+        set => SetProperty(ref _rememberMe, value);
     }
 
     public ICommand LoginCommand { get; }
@@ -49,7 +48,7 @@ public class AuthViewModel : ReactiveObject
         _config = config;
         _secureStorage = secureStorage;
         _onAuthComplete = onAuthComplete;
-        LoginCommand = ReactiveCommand.CreateFromTask(AuthenticateAsync);
+        LoginCommand = new RelayCommand(async _ => await AuthenticateAsync());
     }
 
     private async Task AuthenticateAsync()

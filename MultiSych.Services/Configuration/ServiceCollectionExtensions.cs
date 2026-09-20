@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -41,8 +42,26 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IEmailService, CloudEmailService>();
         services.AddScoped<ICalendarService, CloudCalendarService>();
         services.AddScoped<IStorageService, CloudStorageService>();
-        services.AddScoped<IHybridAIService, HybridAIService>(); // Bu satır zaten vardı, şimdi implementasyonu ekledik.
+        services.AddScoped<IHybridAIService, HybridAIService>();
         services.AddScoped<IIntentParserService, IntentParserService>();
+
+        // "Verilerinle Sohbet" — cache üzerinde birleşik arama + RAG AI cevabı
+        services.AddScoped<IUnifiedSearchService, UnifiedSearchService>();
+
+        // Reaktif olay veriyolu — tüm servisler arası asenkron mesajlaşma
+        services.AddSingleton<IEventBus, EventBus>();
+
+        // Çoklu cihaz senkronizasyonu (snapshot tabanlı)
+        services.AddSingleton<IDeviceSyncService, DeviceSyncService>();
+
+        // Plugin sistemi
+        services.AddSingleton<IPluginLoader, PluginLoader>();
+
+        // Linux güncelleme servisi (Windows'ta Squirrel kullanılır)
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            services.AddSingleton<IUpdateService, LinuxUpdateService>();
+        }
 
         return services;
     }

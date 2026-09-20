@@ -13,4 +13,5 @@ public class CloudFileEntity : BaseEntity
     public long FileSize { get; set; }
     public bool IsDirectory { get; set; }
     public string Provider { get; set; } = string.Empty;
+    public string? WebEditUrl { get; set; }
 }

@@ -24,18 +24,31 @@ public class AutoSyncBackgroundService : BackgroundService
     private readonly HashSet<string> _notifiedEventIds = new();
     private readonly HashSet<string> _notifiedEmailIds = new();
     private readonly INotificationService? _notificationService;
+    private readonly IEventBus? _eventBus;
+    // Kullanıcı tarafından çözülen çakışmalar: "accountId:fileId" → strateji
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _resolvedConflicts = new();
 
     public AutoSyncBackgroundService(
-        IServiceScopeFactory scopeFactory, 
-        ISyncSignalService syncSignalService, 
+        IServiceScopeFactory scopeFactory,
+        ISyncSignalService syncSignalService,
         RuntimeSyncSettings runtimeSyncSettings,
-        INotificationService? notificationService = null)
+        INotificationService? notificationService = null,
+        IEventBus? eventBus = null)
     {
         _scopeFactory = scopeFactory;
         _logger = Log.ForContext<AutoSyncBackgroundService>();
         _syncSignalService = syncSignalService;
         _runtimeSyncSettings = runtimeSyncSettings;
         _notificationService = notificationService;
+        _eventBus = eventBus;
+
+        // Kullanıcı bir çakışmayı çözdüğünde dictionary'e al; bir sonraki sync döngüsünde uygulanır
+        _eventBus?.Subscribe<ConflictResolvedEvent>(ev =>
+        {
+            var key = $"{ev.AccountId}:{ev.FileId}";
+            _resolvedConflicts[key] = ev.Strategy;
+            _syncSignalService.TriggerSync();
+        });
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -155,6 +168,20 @@ public class AutoSyncBackgroundService : BackgroundService
                 
                 if (cancellationToken.IsCancellationRequested) break;
                 await storageService.SyncStorageAsync(account);
+
+                if (!System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+                {
+                    try
+                    {
+                        var mountProvider = scope.ServiceProvider.GetRequiredService<IPlatformMountProvider>();
+                        var targetFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "MultiSych_Drives", account.AccountId ?? string.Empty);
+                        await mountProvider.UpdateLocalMountFolderAsync(account.AccountId ?? string.Empty, targetFolder);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Error(ex, "Failed to update local mount folder for account: {Email}", account.Email);
+                    }
+                }
             }
 
             _logger.Information("Automated sync cycle completed successfully.");
@@ -260,10 +287,18 @@ public class AutoSyncBackgroundService : BackgroundService
 
             _logger.Information("Found {Count} pending offline sync queue items for account {Email}.", queueItems.Count, account.Email);
 
+            int processed = 0;
+
             foreach (var item in queueItems)
             {
                 if (cancellationToken.IsCancellationRequested)
                     break;
+
+                var fileName = Path.GetFileName(item.LocalFilePath);
+                var progressPercent = queueItems.Count > 0
+                    ? (double)processed / queueItems.Count * 100.0
+                    : 0;
+                _eventBus?.Publish(new SyncProgressEvent(fileName, progressPercent, queueItems.Count, processed));
 
                 _logger.Information("Processing offline queue item: {Action} for {Path} (Id: {Id})", item.Action, item.LocalFilePath, item.Id);
                 
@@ -273,14 +308,131 @@ public class AutoSyncBackgroundService : BackgroundService
                     {
                         if (File.Exists(item.LocalFilePath))
                         {
-                            var cloudId = await storageService.UploadFileAsync(account, item.LocalFilePath, item.TargetFolderId);
-                            
-                            // If a temporary FileId was created in DB, update it to the real one
                             var relativePath = "/" + Path.GetRelativePath(
                                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "MultiSych_Drives", account.AccountId ?? string.Empty),
                                 item.LocalFilePath).Replace('\\', '/');
                                 
                             var fileEntity = await dbContext.CloudFiles.FirstOrDefaultAsync(f => f.AccountId == account.AccountId && f.Path == relativePath, cancellationToken);
+
+                            bool hasConflict = false;
+                            string conflictStrategy = _runtimeSyncSettings?.ConflictResolutionStrategy ?? "KeepBoth";
+
+                            if (fileEntity != null && !fileEntity.FileId.StartsWith("temp_"))
+                            {
+                                try
+                                {
+                                    var cloudFile = await storageService.GetFileAsync(account, fileEntity.FileId);
+                                    if (cloudFile != null && (cloudFile.ModifiedDate - fileEntity.UpdatedAt).TotalSeconds > 2.0)
+                                    {
+                                        _logger.Warning("Offline Queue: Conflict detected for {FileName}. Cloud version modified at {CloudTime}, Local version opened with last known update time {LocalTime}.", fileEntity.FileName, cloudFile.ModifiedDate, fileEntity.UpdatedAt);
+                                        hasConflict = true;
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.Warning(ex, "Offline Queue: Failed to check conflicts for {FileName}. Assuming no conflict.", fileEntity.FileName);
+                                }
+                            }
+
+                            if (hasConflict)
+                            {
+                                if (conflictStrategy == "AskUser")
+                                {
+                                    var conflictKey = $"{account.AccountId}:{fileEntity?.FileId}";
+                                    if (_resolvedConflicts.TryRemove(conflictKey, out var userChoice))
+                                    {
+                                        // Kullanıcı çözümü uygulandı — stratejiyi geçici olarak değiştir
+                                        conflictStrategy = userChoice;
+                                        _logger.Information("Offline Queue: Applying user-resolved strategy '{Strategy}' for {FileName}.", userChoice, fileEntity?.FileName ?? item.LocalFilePath);
+                                    }
+                                    else
+                                    {
+                                        // Henüz kullanıcı karar vermedi — bildir ve ertele
+                                        _eventBus?.Publish(new FileConflictDetectedEvent(
+                                            AccountId: account.AccountId ?? string.Empty,
+                                            FileId: fileEntity?.FileId ?? string.Empty,
+                                            FileName: fileEntity?.FileName ?? Path.GetFileName(item.LocalFilePath),
+                                            LocalPath: item.LocalFilePath,
+                                            LocalModifiedAt: File.Exists(item.LocalFilePath) ? File.GetLastWriteTimeUtc(item.LocalFilePath) : DateTime.UtcNow,
+                                            CloudModifiedAt: fileEntity?.UpdatedAt ?? DateTime.UtcNow));
+                                        _logger.Information("Offline Queue: Conflict for {FileName} queued for user resolution.", fileEntity?.FileName ?? item.LocalFilePath);
+                                        continue;
+                                    }
+                                }
+
+                                if (conflictStrategy == "ServerWins")
+                                {
+                                    _logger.Information("Offline Queue: Conflict resolution strategy is ServerWins. Discarding local changes for {FileName}.", fileEntity?.FileName ?? item.LocalFilePath);
+                                    try { File.Delete(item.LocalFilePath); } catch { }
+                                    item.IsProcessed = true;
+                                    item.UpdatedAt = DateTime.UtcNow;
+                                    await dbContext.SaveChangesAsync(cancellationToken);
+                                    continue;
+                                }
+                                else if (conflictStrategy == "KeepBoth")
+                                {
+                                    _logger.Information("Offline Queue: Conflict resolution strategy is KeepBoth. Renaming local version of {FileName}.", fileEntity?.FileName ?? item.LocalFilePath);
+
+                                    var directoryPath = Path.GetDirectoryName(relativePath)?.Replace("\\", "/");
+                                    if (string.IsNullOrEmpty(directoryPath)) directoryPath = "/";
+                                    if (!directoryPath.EndsWith("/")) directoryPath += "/";
+
+                                    var origNameWithoutExt = Path.GetFileNameWithoutExtension(relativePath);
+                                    var ext = Path.GetExtension(relativePath);
+                                    var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                                    var newFileName = $"{origNameWithoutExt} (Local Conflict {timestamp}){ext}";
+                                    var newRelativePath = directoryPath + newFileName;
+
+                                    var targetPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "MultiSych_Drives", account.AccountId ?? string.Empty);
+                                    var newFullPath = Path.Combine(targetPath, newRelativePath.TrimStart('/')).Replace('\\', '/');
+
+                                    try
+                                    {
+                                        var watcher = PlatformMountProvider._activeWatchers.Values.FirstOrDefault(w => string.Equals(w.Path, targetPath, StringComparison.OrdinalIgnoreCase));
+                                        if (watcher != null) watcher.EnableRaisingEvents = false;
+
+                                        File.Move(item.LocalFilePath, newFullPath, true);
+
+                                        if (watcher != null) watcher.EnableRaisingEvents = true;
+
+                                        item.LocalFilePath = newFullPath;
+                                        relativePath = newRelativePath;
+
+                                        var fileInfo = new System.IO.FileInfo(newFullPath);
+                                        var parentId = fileEntity?.ParentId;
+                                        var newFileEntity = new CloudFileEntity
+                                        {
+                                            AccountId = account.AccountId!,
+                                            FileId = "temp_" + Guid.NewGuid().ToString("N"),
+                                            FileName = newFileName,
+                                            Path = relativePath,
+                                            ParentId = parentId,
+                                            MimeType = "application/octet-stream",
+                                            FileSize = fileInfo.Length,
+                                            IsDirectory = false,
+                                            Provider = account.Provider ?? string.Empty,
+                                            CreatedAt = DateTime.UtcNow,
+                                            UpdatedAt = DateTime.UtcNow
+                                        };
+                                        dbContext.CloudFiles.Add(newFileEntity);
+                                        await dbContext.SaveChangesAsync(cancellationToken);
+
+                                        fileEntity = newFileEntity;
+                                    }
+                                    catch (Exception moveEx)
+                                    {
+                                        _logger.Error(moveEx, "Offline Queue: Failed to rename local file during KeepBoth resolution for {FileName}", fileEntity?.FileName ?? item.LocalFilePath);
+                                        item.RetryCount++;
+                                        item.ErrorMessage = moveEx.Message;
+                                        item.UpdatedAt = DateTime.UtcNow;
+                                        await dbContext.SaveChangesAsync(cancellationToken);
+                                        continue;
+                                    }
+                                }
+                            }
+
+                            var cloudId = await storageService.UploadFileAsync(account, item.LocalFilePath, item.TargetFolderId);
+
                             if (fileEntity != null && !string.IsNullOrEmpty(cloudId))
                             {
                                 fileEntity.FileId = cloudId;
@@ -305,6 +457,7 @@ public class AutoSyncBackgroundService : BackgroundService
 
                     item.IsProcessed = true;
                     item.UpdatedAt = DateTime.UtcNow;
+                    processed++;
                 }
                 catch (Exception ex)
                 {
@@ -315,6 +468,7 @@ public class AutoSyncBackgroundService : BackgroundService
                 }
             }
 
+            _eventBus?.Publish(new SyncProgressEvent(string.Empty, 100, queueItems.Count, processed));
             await dbContext.SaveChangesAsync(cancellationToken);
         }
         catch (Exception ex)

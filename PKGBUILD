@@ -7,7 +7,11 @@ arch=('x86_64')
 url="https://github.com/yourusername/MultiSych"
 license=('MIT')
 depends=(
-    'dotnet-runtime-10.0'
+    # dotnet-runtime-10.0 KASITLI OLARAK burada YOK: build() self-contained
+    # yayınlıyor (--self-contained true --runtime linux-x64), çalışma zamanı
+    # pakete gömülü. Sistemden runtime istemek burada gereksiz sıkı bir
+    # bağımlılık olurdu (2026-09-20 denetiminde bulunan bir çelişkiydi,
+    # muhtemelen framework-dependent'ten self-contained'a geçişten kalmıştı).
     'gtk3'
     'libxss'
     'nss'

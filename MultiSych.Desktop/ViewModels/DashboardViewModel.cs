@@ -30,7 +30,6 @@ public class DashboardViewModel : ViewModelBase, IDisposable
 {
     private readonly IAppStatusService _appStatusService;
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly IDisposable _statusSubscription;
 
     private string _statusMessage = "Uygulama başlatılıyor...";
     private bool _isSyncing;
@@ -50,7 +49,7 @@ public class DashboardViewModel : ViewModelBase, IDisposable
         _appStatusService = appStatusService;
         _scopeFactory = scopeFactory;
 
-        _statusSubscription = _appStatusService.StatusChanged.Subscribe(OnStatusChanged);
+        _appStatusService.StatusChanged += OnStatusChanged;
         
         // Başlangıçta veritabanındaki mevcut sayıları yükle
         Task.Run(LoadInitialCounts);
@@ -219,6 +218,6 @@ public class DashboardViewModel : ViewModelBase, IDisposable
 
     public void Dispose()
     {
-        _statusSubscription.Dispose();
+        _appStatusService.StatusChanged -= OnStatusChanged;
     }
 }

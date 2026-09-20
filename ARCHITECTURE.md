@@ -7,7 +7,7 @@ MultiSych, **3 katmanlı mimariye** (3-Tier Architecture) uyar:
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                 Presentation Layer (UI)                      │
-│              MultiSych.Desktop (Avalonia UI)                │
+│           MultiSych.Desktop (GTK4 / libadwaita)             │
 │          ViewModels, Views, Services (IWindowService)       │
 └────────────────────────┬────────────────────────────────────┘
                          │
@@ -33,7 +33,7 @@ MultiSych, **3 katmanlı mimariye** (3-Tier Architecture) uyar:
 **Proje:** `MultiSych.Desktop/`
 
 #### Sorumluluğu
-- Kullanıcı arayüzü gösterimi (XAML)
+- Kullanıcı arayüzü gösterimi (kod ile oluşturulan GTK4 widget'ları)
 - Kullanıcı etkileşimlerini yönetme
 - ViewModels aracılığı ile veri bağlama
 
@@ -41,8 +41,8 @@ MultiSych, **3 katmanlı mimariye** (3-Tier Architecture) uyar:
 
 | Bileşen | Amaç | Teknoloji |
 |---------|------|-----------|
-| `Views/` | XAML UI tanımları | Avalonia |
-| `ViewModels/` | Veri bağlama & komutlar | ReactiveUI |
+| `Views/` | Kod tabanlı UI tanımları | GTK4 / libadwaita (GirCore) |
+| `ViewModels/` | Veri bağlama & komutlar | `ViewModelBase` (INotifyPropertyChanged) + `RelayCommand` |
 | `Services/` | Masaüstü spesifik işler | Custom |
 
 #### ViewModels Listesi
@@ -69,7 +69,7 @@ ErrorReportViewModel       → Hata raporlama
 User Interaction
        │
        ▼
-View (XAML)
+View (GTK4)
        │
        ├─ Binding ─► ViewModel
        │

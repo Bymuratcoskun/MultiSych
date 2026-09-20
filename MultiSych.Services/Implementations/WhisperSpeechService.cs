@@ -7,7 +7,6 @@ using MultiSych.Services.Interfaces;
 using Serilog;
 using Whisper.net;
 using Whisper.net.Ggml;
-using ReactiveUI;
 
 namespace MultiSych.Services.Implementations
 {
@@ -19,6 +18,7 @@ namespace MultiSych.Services.Implementations
         private readonly IIntentParserService _intentParserService;
         private readonly ISyncSignalService _syncSignalService;
         private readonly IUserSettingsService _userSettingsService;
+        private readonly IEventBus _eventBus;
 
         private string? _modelPath;
         private string _loadedLanguage = "auto";
@@ -29,18 +29,20 @@ namespace MultiSych.Services.Implementations
         private string? _realTimeTempFilePath;
 
         public WhisperSpeechService(
-            IIntentParserService intentParserService, 
+            IIntentParserService intentParserService,
             ISyncSignalService syncSignalService,
-            IUserSettingsService userSettingsService)
+            IUserSettingsService userSettingsService,
+            IEventBus eventBus)
         {
             _intentParserService = intentParserService;
             _syncSignalService = syncSignalService;
             _userSettingsService = userSettingsService;
+            _eventBus = eventBus;
         }
 
-#pragma warning disable CA1416
+#if WINDOWS
         private System.Speech.Synthesis.SpeechSynthesizer? _synthesizer;
-#pragma warning restore CA1416
+#endif
 
         public async Task InitializeAsync(string modelPath)
         {
@@ -109,7 +111,7 @@ namespace MultiSych.Services.Implementations
             {
                 var diarizationOutput = string.Join("\n", segmentLines);
                 _logger.Information("Zaman damgalı konuşma analizi:\n{Diarization}", diarizationOutput);
-                ReactiveUI.MessageBus.Current.SendMessage(diarizationOutput, "DetailedTranscription");
+                _eventBus.Publish(new DetailedTranscriptionEvent(diarizationOutput));
             }
 
             var intent = await _intentParserService.ParseIntentAsync(resultText);
@@ -117,70 +119,70 @@ namespace MultiSych.Services.Implementations
             {
                 _logger.Information("Sesli komut algılandı: 'Sync'. Arka plan senkronizasyonu tetikleniyor.");
                 _syncSignalService.TriggerSync();
-                MessageBus.Current.SendMessage("Arka plan senkronizasyonu başlatıldı.", "NotificationIntent");
+                _eventBus.Publish(new NotificationIntentEvent("Arka plan senkronizasyonu başlatıldı."));
                 _ = SpeakAsync("Senkronizasyon başlatılıyor");
             }
             else if (intent == "Summarize")
             {
                 _logger.Information("Sesli komut algılandı: 'Summarize'. Analiz ekranına geçiliyor.");
-                MessageBus.Current.SendMessage("Analyzer", "NavigationIntent");
-                MessageBus.Current.SendMessage("Belge analiz ekranı açıldı.", "NotificationIntent");
+                _eventBus.Publish(new NavigationIntentEvent("Analyzer"));
+                _eventBus.Publish(new NotificationIntentEvent("Belge analiz ekranı açıldı."));
                 _ = SpeakAsync("Belge analiz ekranı açılıyor");
             }
             else if (intent == "Calendar")
             {
                 _logger.Information("Sesli komut algılandı: 'Calendar'. Takvim ekranına geçiliyor.");
-                MessageBus.Current.SendMessage("Calendar", "NavigationIntent");
-                MessageBus.Current.SendMessage("Takvim sekmesine geçildi.", "NotificationIntent");
+                _eventBus.Publish(new NavigationIntentEvent("Calendar"));
+                _eventBus.Publish(new NotificationIntentEvent("Takvim sekmesine geçildi."));
                 _ = SpeakAsync("Takvim sekmesine geçiliyor");
             }
             else if (intent == "Dashboard")
             {
                 _logger.Information("Sesli komut algılandı: 'Dashboard'. Genel bakış ekranına geçiliyor.");
-                MessageBus.Current.SendMessage("Dashboard", "NavigationIntent");
-                MessageBus.Current.SendMessage("Genel bakış ekranı açıldı.", "NotificationIntent");
+                _eventBus.Publish(new NavigationIntentEvent("Dashboard"));
+                _eventBus.Publish(new NotificationIntentEvent("Genel bakış ekranı açıldı."));
                 _ = SpeakAsync("Genel bakış ekranı açılıyor");
             }
             else if (intent == "Accounts")
             {
                 _logger.Information("Sesli komut algılandı: 'Accounts'. Bağlı hesaplar ekranına geçiliyor.");
-                MessageBus.Current.SendMessage("Accounts", "NavigationIntent");
-                MessageBus.Current.SendMessage("Bağlı hesaplar ekranı açıldı.", "NotificationIntent");
+                _eventBus.Publish(new NavigationIntentEvent("Accounts"));
+                _eventBus.Publish(new NotificationIntentEvent("Bağlı hesaplar ekranı açıldı."));
                 _ = SpeakAsync("Bağlı hesaplar ekranı açılıyor");
             }
             else if (intent == "AI")
             {
                 _logger.Information("Sesli komut algılandı: 'AI'. Yapay zeka asistan genel bakışına geçiliyor.");
-                MessageBus.Current.SendMessage("AI", "NavigationIntent");
-                MessageBus.Current.SendMessage("Yapay zeka asistanı açıldı.", "NotificationIntent");
+                _eventBus.Publish(new NavigationIntentEvent("AI"));
+                _eventBus.Publish(new NotificationIntentEvent("Yapay zeka asistanı açıldı."));
                 _ = SpeakAsync("Yapay zeka asistanı açılıyor");
             }
             else if (intent == "Explorer")
             {
                 _logger.Information("Sesli komut algılandı: 'Explorer'. Dosya gezginine geçiliyor.");
-                MessageBus.Current.SendMessage("Explorer", "NavigationIntent");
-                MessageBus.Current.SendMessage("Dosya gezgini açıldı.", "NotificationIntent");
+                _eventBus.Publish(new NavigationIntentEvent("Explorer"));
+                _eventBus.Publish(new NotificationIntentEvent("Dosya gezgini açıldı."));
                 _ = SpeakAsync("Dosya gezgini açılıyor");
             }
             else if (intent == "Logs")
             {
                 _logger.Information("Sesli komut algılandı: 'Logs'. Sistem logları ekranına geçiliyor.");
-                MessageBus.Current.SendMessage("Logs", "NavigationIntent");
-                MessageBus.Current.SendMessage("Sistem logları ekranı açıldı.", "NotificationIntent");
+                _eventBus.Publish(new NavigationIntentEvent("Logs"));
+                _eventBus.Publish(new NotificationIntentEvent("Sistem logları ekranı açıldı."));
                 _ = SpeakAsync("Sistem logları ekranı açılıyor");
             }
             else if (intent == "Settings")
             {
                 _logger.Information("Sesli komut algılandı: 'Settings'. Ayarlar ekranına geçiliyor.");
-                MessageBus.Current.SendMessage("Settings", "NavigationIntent");
-                MessageBus.Current.SendMessage("Ayarlar ekranı açıldı.", "NotificationIntent");
+                _eventBus.Publish(new NavigationIntentEvent("Settings"));
+                _eventBus.Publish(new NotificationIntentEvent("Ayarlar ekranı açıldı."));
                 _ = SpeakAsync("Ayarlar ekranı açılıyor");
             }
             else if (intent == "Chat")
             {
                 _logger.Information("Sesli komut algılandı: 'Chat'. Sohbet ekranına geçiliyor.");
-                MessageBus.Current.SendMessage("Chat", "NavigationIntent");
-                MessageBus.Current.SendMessage("Sohbet ekranı açıldı.", "NotificationIntent");
+                _eventBus.Publish(new NavigationIntentEvent("Chat"));
+                _eventBus.Publish(new NotificationIntentEvent("Sohbet ekranı açıldı."));
                 _ = SpeakAsync("Sohbet ekranı açılıyor");
             }
             
@@ -191,26 +193,27 @@ namespace MultiSych.Services.Implementations
         {
             if (string.IsNullOrWhiteSpace(text)) return Task.CompletedTask;
 
+#if WINDOWS
             if (OperatingSystem.IsWindows())
             {
                 try
                 {
-#pragma warning disable CA1416
                     if (_synthesizer == null)
                     {
                         _synthesizer = new System.Speech.Synthesis.SpeechSynthesizer();
                         _synthesizer.SetOutputToDefaultAudioDevice();
                     }
-                    _synthesizer.SpeakAsyncCancelAll(); // Varsa önceki konuşmayı susturur
+                    _synthesizer.SpeakAsyncCancelAll();
                     _synthesizer.SpeakAsync(text);
-#pragma warning restore CA1416
                 }
                 catch (Exception ex)
                 {
                     _logger.Error(ex, "Failed to speak text");
                 }
             }
-            else if (OperatingSystem.IsMacOS())
+            else
+#endif
+            if (OperatingSystem.IsMacOS())
             {
                 try
                 {
@@ -245,16 +248,13 @@ namespace MultiSych.Services.Implementations
 
         public void StopSpeaking()
         {
+#if WINDOWS
             if (OperatingSystem.IsWindows())
             {
-                try
-                {
-#pragma warning disable CA1416
-                    _synthesizer?.SpeakAsyncCancelAll();
-#pragma warning restore CA1416
-                }
+                try { _synthesizer?.SpeakAsyncCancelAll(); }
                 catch { }
             }
+#endif
         }
 
         private string GetTargetLanguageCode()
@@ -322,7 +322,7 @@ namespace MultiSych.Services.Implementations
                                 text = text.Trim();
                                 if (!string.IsNullOrWhiteSpace(text))
                                 {
-                                    ReactiveUI.MessageBus.Current.SendMessage(text, "PartialTranscription");
+                                    _eventBus.Publish(new PartialTranscriptionEvent(text));
                                 }
                             }
                         }

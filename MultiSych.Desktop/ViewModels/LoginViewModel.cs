@@ -1,20 +1,22 @@
 using System;
 using System.Windows.Input;
-using Avalonia;
-using Avalonia.Controls.ApplicationLifetimes;
-using MultiSych.Desktop.Views;
+using MultiSych.Services.Configuration;
+using MultiSych.Services.Security;
 
 namespace MultiSych.Desktop.ViewModels;
 
 public class LoginViewModel : ViewModelBase
 {
     private string _password = string.Empty;
+    private string _twoFactorCode = string.Empty;
     private string _errorMessage = string.Empty;
-    private readonly IServiceProvider _serviceProvider;
+    private readonly SecuritySettings _security;
+    private readonly Action<bool> _callback;
 
-    public LoginViewModel(IServiceProvider serviceProvider)
+    public LoginViewModel(SecuritySettings security, Action<bool> callback)
     {
-        _serviceProvider = serviceProvider;
+        _security = security ?? throw new ArgumentNullException(nameof(security));
+        _callback = callback ?? throw new ArgumentNullException(nameof(callback));
         LoginCommand = new RelayCommand(_ => Login());
     }
 
@@ -23,6 +25,14 @@ public class LoginViewModel : ViewModelBase
         get => _password;
         set => SetProperty(ref _password, value);
     }
+
+    public string TwoFactorCode
+    {
+        get => _twoFactorCode;
+        set => SetProperty(ref _twoFactorCode, value);
+    }
+
+    public bool RequiresTwoFactor => _security.EnableTwoFactorAuth;
 
     public string ErrorMessage
     {
@@ -34,23 +44,21 @@ public class LoginViewModel : ViewModelBase
 
     private void Login()
     {
-        var storedPassword = Environment.GetEnvironmentVariable("MULTISYCH_STARTUP_PASSWORD") ?? string.Empty;
-        
-        if (Password == storedPassword || string.IsNullOrEmpty(storedPassword))
+        if (_security.RequireStartupPassword && !SecurityHelper.ValidatePassword(_security, Password))
         {
-            if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
-            {
-                var mainWindow = new MainWindow { DataContext = new MainWindowViewModel(_serviceProvider) };
-                var oldWindow = desktop.MainWindow;
-                desktop.MainWindow = mainWindow;
-                mainWindow.Show();
-                oldWindow?.Close();
-            }
-        }
-        else
-        {
-            ErrorMessage = "Hatalı şifre. Lütfen tekrar deneyin.";
+            ErrorMessage = "Hatalı parola";
             Password = string.Empty;
+            return;
         }
+
+        if (_security.EnableTwoFactorAuth && !SecurityHelper.ValidateTwoFactorCode(_security, TwoFactorCode))
+        {
+            ErrorMessage = "Hatalı 2FA kodu";
+            TwoFactorCode = string.Empty;
+            return;
+        }
+
+        ErrorMessage = string.Empty;
+        _callback(true);
     }
 }

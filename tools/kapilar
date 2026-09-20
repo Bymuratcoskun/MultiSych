@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# kapilar — bir projenin bütün kapılarını tek komutla koştur.
+#
+# NEDEN VAR: Project_Deviation'da 11 kapı var ve her değişiklikten sonra
+# hepsi elle koşturuluyordu — hem benim tarafımda hem iş paketlerinde
+# "şu 11 komutu çalıştır" diye yazılıyordu. Tek tek koşturmak unutmaya
+# ve eksik doğrulamaya açık; "alt ajanın raporuna güvenme, kendin
+# koştur" kuralının ucuz hâli bu.
+#
+# Kullanım:
+#   kapilar                 # bulunduğun projenin kapılarını koştur
+#   kapilar -p <dizin>      # başka bir projede koştur
+#   kapilar -r <dosya>      # sonucu dosyaya da yaz
+#
+# Yapılandırma: proje kökünde .kapilar.conf
+#   ad|komut|beklenen-desen
+#   Satır başında # yorum. Boş satır atlanır.
+#   Desen boşsa yalnız çıkış kodu 0 aranır.
+set -uo pipefail
+
+PROJE="$PWD"
+RAPOR=""
+ZAMAN_ASIMI="${KAPILAR_ZAMAN_ASIMI:-180}"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -p|--proje) PROJE="$2"; shift 2 ;;
+    -r|--rapor) RAPOR="$2"; shift 2 ;;
+    -h|--yardim)
+      sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "kapilar: bilinmeyen seçenek: $1" >&2; exit 64 ;;
+  esac
+done
+
+cd "$PROJE" || { echo "kapilar: dizine girilemedi: $PROJE" >&2; exit 66; }
+AYAR="$PROJE/.kapilar.conf"
+[ -r "$AYAR" ] || {
+  echo "kapilar: yapılandırma yok: $AYAR" >&2
+  echo "Örnek satır:  derleme|dotnet build|Build succeeded" >&2
+  exit 78
+}
+
+TOPLAM=0; GECEN=0
+declare -a BASARISIZ_AD=() BASARISIZ_CIKTI=()
+BASLANGIC=$(date +%s)
+
+printf '%-16s %s\n' "KAPI" "DURUM"
+printf '%s\n' "────────────────────────────────────────────"
+
+while IFS='|' read -r ad komut desen; do
+  case "${ad// /}" in ''|'#'*) continue ;; esac
+  TOPLAM=$((TOPLAM+1))
+
+  cikti=$(timeout "$ZAMAN_ASIMI" bash -c "$komut" 2>&1)
+  kod=$?
+
+  if [ $kod -eq 124 ]; then
+    durum="⏱  ZAMAN AŞIMI (${ZAMAN_ASIMI}sn)"
+  elif [ -n "${desen// /}" ]; then
+    # Desen verilmişse ÇIKIŞ KODU YETMEZ: metin de tutmalı. Bir kapının
+    # "başarıyla hiçbir şey yapmaması" bu projede yaşanmış bir hatadır.
+    if printf '%s' "$cikti" | grep -qF "$desen"; then
+      durum="✅ yeşil"; GECEN=$((GECEN+1))
+    else
+      durum="🔴 desen tutmadı: '$desen'"
+    fi
+  elif [ $kod -eq 0 ]; then
+    durum="✅ yeşil"; GECEN=$((GECEN+1))
+  else
+    durum="🔴 çıkış kodu $kod"
+  fi
+
+  printf '%-16s %s\n' "$ad" "$durum"
+  case "$durum" in
+    ✅*) ;;
+    *) BASARISIZ_AD+=("$ad"); BASARISIZ_CIKTI+=("$(printf '%s' "$cikti" | tail -12)") ;;
+  esac
+done < "$AYAR"
+
+SURE=$(( $(date +%s) - BASLANGIC ))
+printf '%s\n' "────────────────────────────────────────────"
+
+if [ "$GECEN" -eq "$TOPLAM" ]; then
+  HUKUM="✅ $TOPLAM kapının $TOPLAM'i YEŞİL (${SURE}sn)"
+  KOD=0
+else
+  HUKUM="⛔ $TOPLAM kapının $((TOPLAM-GECEN))'i KIRMIZI (${SURE}sn)"
+  KOD=1
+fi
+echo "$HUKUM"
+
+# Başarısız kapıların çıktısı — "neden" söylenmeden kırmızı işe yaramaz.
+for i in "${!BASARISIZ_AD[@]}"; do
+  echo
+  echo "── ${BASARISIZ_AD[$i]} ─ son satırlar ──"
+  printf '%s\n' "${BASARISIZ_CIKTI[$i]}"
+done
+
+if [ -n "$RAPOR" ]; then
+  {
+    echo "# Kapı durumu — $(date '+%Y-%m-%d %H:%M')"
+    echo
+    echo "$HUKUM"
+    echo
+    for i in "${!BASARISIZ_AD[@]}"; do
+      echo "## 🔴 ${BASARISIZ_AD[$i]}"
+      echo '```'
+      printf '%s\n' "${BASARISIZ_CIKTI[$i]}"
+      echo '```'
+    done
+  } > "$RAPOR"
+  echo
+  echo "rapor: $RAPOR"
+fi
+
+exit $KOD

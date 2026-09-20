@@ -140,5 +140,62 @@ namespace MultiSych.Tests
             var version = command.ExecuteScalar() as string;
             Assert.NotNull(version);
         }
+
+        [Fact]
+        public void DocumentChatMessageEntity_ShouldReadAndWrite()
+        {
+            // Arrange
+            var password = "TestDbPassword123!";
+            var connectionString = SecurityHelper.BuildSqlCipherConnectionString(_dbPath, password, encryptDatabase: true);
+
+            var optionsBuilder = new DbContextOptionsBuilder<LocalCacheDbContext>();
+            optionsBuilder.UseSqlite(connectionString);
+
+            // Act - Write chat history
+            using (var context = new LocalCacheDbContext(optionsBuilder.Options))
+            {
+                context.Database.EnsureCreated();
+
+                var message1 = new DocumentChatMessageEntity
+                {
+                    AccountId = "acc-1",
+                    FileId = "file-100",
+                    Text = "What is the delivery date?",
+                    IsUser = true,
+                    Time = "10:15"
+                };
+
+                var message2 = new DocumentChatMessageEntity
+                {
+                    AccountId = "acc-1",
+                    FileId = "file-100",
+                    Text = "The delivery date is December 15.",
+                    IsUser = false,
+                    Time = "10:16"
+                };
+
+                context.DocumentChatMessages.Add(message1);
+                context.DocumentChatMessages.Add(message2);
+                context.SaveChanges();
+            }
+
+            // Assert - Read and verify chat history
+            using (var context = new LocalCacheDbContext(optionsBuilder.Options))
+            {
+                var messages = context.DocumentChatMessages
+                    .Where(m => m.AccountId == "acc-1" && m.FileId == "file-100")
+                    .OrderBy(m => m.CreatedAt)
+                    .ToList();
+
+                Assert.Equal(2, messages.Count);
+                Assert.Equal("What is the delivery date?", messages[0].Text);
+                Assert.True(messages[0].IsUser);
+                Assert.Equal("10:15", messages[0].Time);
+
+                Assert.Equal("The delivery date is December 15.", messages[1].Text);
+                Assert.False(messages[1].IsUser);
+                Assert.Equal("10:16", messages[1].Time);
+            }
+        }
     }
 }

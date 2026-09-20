@@ -14,7 +14,13 @@ namespace MultiSych.Services.Models
         public List<EmailAttachment>? Attachments { get; set; }
         public string? Provider { get; set; } // "Google", "Microsoft", "Yandex"
         public string? AccountId { get; set; }
+        public bool IsRead { get; set; }
+        public string? AiSummary { get; set; }
+        public string? AiCategory { get; set; }
+        public bool IsArchived { get; set; }
     }
+
+
 
     public class EmailAttachment
     {

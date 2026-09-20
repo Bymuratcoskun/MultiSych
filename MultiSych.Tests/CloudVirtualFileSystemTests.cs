@@ -1,3 +1,4 @@
+#if WINDOWS
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -316,3 +317,4 @@ namespace MultiSych.Tests
 #pragma warning restore CA1416
     }
 }
+#endif

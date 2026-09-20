@@ -15,7 +15,7 @@ namespace MultiSych.Services.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "8.0.0");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
 
             modelBuilder.Entity("MultiSych.Services.Data.AccountCredentialEntity", b =>
                 {
@@ -170,9 +170,47 @@ namespace MultiSych.Services.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("WebEditUrl")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.ToTable("CloudFiles");
+                });
+
+            modelBuilder.Entity("MultiSych.Services.Data.DocumentChatMessageEntity", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FileId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsUser")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Time")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("DocumentChatMessages");
                 });
 
             modelBuilder.Entity("MultiSych.Services.Data.EmailMessageEntity", b =>
@@ -182,6 +220,12 @@ namespace MultiSych.Services.Migrations
 
                     b.Property<string>("AccountId")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AiCategory")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AiSummary")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Body")
@@ -196,6 +240,9 @@ namespace MultiSych.Services.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("IsAnalyzedForEvents")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsArchived")
                         .HasColumnType("INTEGER");
 
                     b.Property<bool>("IsRead")

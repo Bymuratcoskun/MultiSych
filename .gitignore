@@ -15,3 +15,6 @@
 # Generated runtime logs
 logs/*.txt
 MultiSych.Desktop/logs/*.txt
+
+# Yerel/kişisel araç durumu (proje kaynağı değil)
+.claude/settings.local.json
