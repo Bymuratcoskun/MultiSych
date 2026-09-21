@@ -63,6 +63,7 @@ public class MainWindowViewModel : ViewModelBase
     public ChatViewModel ChatPage { get; }
     public EmailViewModel EmailPage { get; }
     public DocumentsViewModel DocumentsPage { get; }
+    public CalendarViewModel CalendarPage { get; }
 
     public object CurrentPageViewModel
     {
@@ -97,6 +98,7 @@ public class MainWindowViewModel : ViewModelBase
         ChatPage = services.GetService(typeof(ChatViewModel)) as ChatViewModel ?? throw new InvalidOperationException("ChatViewModel is missing in DI.");
         EmailPage = services.GetService(typeof(EmailViewModel)) as EmailViewModel ?? throw new InvalidOperationException("EmailViewModel is missing in DI.");
         DocumentsPage = services.GetService(typeof(DocumentsViewModel)) as DocumentsViewModel ?? throw new InvalidOperationException("DocumentsViewModel is missing in DI.");
+        CalendarPage = services.GetService(typeof(CalendarViewModel)) as CalendarViewModel ?? throw new InvalidOperationException("CalendarViewModel is missing in DI.");
 
         RefreshCommand = new RelayCommand(async _ => await RefreshCurrentPageAsync());
         NavigateCommand = new RelayCommand(section => Navigate(section?.ToString() ?? string.Empty));
@@ -264,6 +266,7 @@ public class MainWindowViewModel : ViewModelBase
             "Chat" => ChatPage,
             "Mail" => EmailPage,
             "Documents" => DocumentsPage,
+            "Calendar" => CalendarPage,
             _ => DashboardPage
         };
     }

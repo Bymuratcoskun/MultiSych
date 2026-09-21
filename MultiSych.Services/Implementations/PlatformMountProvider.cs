@@ -4,9 +4,6 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
-#if WINDOWS
-using DokanNet;
-#endif
 using Microsoft.EntityFrameworkCore;
 using MultiSych.Services.Data;
 using MultiSych.Services.Interfaces;
@@ -32,25 +29,10 @@ namespace MultiSych.Services.Implementations
 
         public string GetAvailableDriveLetter()
         {
-            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                // Linux veya macOS için sürücü harfi mantığı yoktur, klasör yolu döndürürüz.
-                var linuxPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "MultiSych_Drives", Guid.NewGuid().ToString("N").Substring(0, 8));
-                Directory.CreateDirectory(linuxPath);
-                return linuxPath;
-            }
-
-            // Windows için Z'den başlayarak C'ye kadar boşta olan ilk sürücü harfini bul.
-            var usedDrives = DriveInfo.GetDrives().Select(d => d.Name.Substring(0, 1).ToUpper()).ToList();
-            for (char c = 'Z'; c >= 'D'; c--)
-            {
-                if (!usedDrives.Contains(c.ToString()))
-                {
-                    return $"{c}:";
-                }
-            }
-            
-            throw new Exception("No available drive letters found.");
+            // Linux veya macOS için sürücü harfi mantığı yoktur, klasör yolu döndürürüz.
+            var linuxPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "MultiSych_Drives", Guid.NewGuid().ToString("N").Substring(0, 8));
+            Directory.CreateDirectory(linuxPath);
+            return linuxPath;
         }
 
         public async Task<bool> MountAsync(string mountPoint, string targetPath, string volumeLabel)
@@ -62,10 +44,6 @@ namespace MultiSych.Services.Implementations
                 Directory.CreateDirectory(targetPath);
             }
 
-#if WINDOWS
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                return await MountWindowsAsync(mountPoint, targetPath);
-#endif
             return await MountLinuxAsync(mountPoint, targetPath);
         }
 
@@ -73,64 +51,8 @@ namespace MultiSych.Services.Implementations
         {
             _logger.Information("Unmounting {MountPoint}", mountPoint);
 
-#if WINDOWS
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                return await UnmountWindowsAsync(mountPoint);
-#endif
             return await UnmountLinuxAsync(mountPoint);
         }
-
-#if WINDOWS
-        private async Task<bool> MountWindowsAsync(string driveLetter, string targetPath)
-        {
-            try
-            {
-                var accountId = Path.GetFileName(targetPath);
-                var cvfs = new CloudVirtualFileSystem(accountId, _storageService, _dbContextFactory, _runtimeSyncSettings);
-
-                var drive = driveLetter.Replace("\\", "").Replace("/", "");
-                if (!drive.EndsWith("\\")) drive += "\\";
-
-                _logger.Information("Starting Dokan mount on {Drive}", drive);
-
-                // Dokan.Mount işlemi bloklayıcıdır (blocking), bu yüzden arka plan görevine alıyoruz
-                _ = Task.Run(() =>
-                {
-                    try
-                    {
-                        cvfs.Mount(drive, DokanOptions.DebugMode | DokanOptions.RemovableDrive);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.Error(ex, "Dokan mount failed for {Drive}", drive);
-                    }
-                });
-
-                // Sürücünün işletim sistemine yansıması için kısa bir bekleme süresi
-                await Task.Delay(1000);
-                return true;
-            }
-            catch (Exception ex) { _logger.Error(ex, "Exception during Windows mount"); }
-            return false;
-        }
-
-        private Task<bool> UnmountWindowsAsync(string driveLetter)
-        {
-            try
-            {
-                var drive = driveLetter.Replace("\\", "").Replace("/", "");
-                char letter = drive[0];
-
-                _logger.Information("Unmounting Dokan volume from {Drive}", letter);
-                var dokan = new Dokan(null);
-                dokan.Unmount(letter);
-
-                return Task.FromResult(true);
-            }
-            catch (Exception ex) { _logger.Error(ex, "Exception during Windows unmount"); }
-            return Task.FromResult(false);
-        }
-#endif
 
         private async Task<bool> MountLinuxAsync(string mountPoint, string targetPath)
         {
@@ -236,9 +158,7 @@ namespace MultiSych.Services.Implementations
         {
             try
             {
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                    Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
-                else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
                     Process.Start(new ProcessStartInfo { FileName = "xdg-open", ArgumentList = { path }, UseShellExecute = false });
                 else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
                     Process.Start(new ProcessStartInfo { FileName = "open", ArgumentList = { path }, UseShellExecute = false });

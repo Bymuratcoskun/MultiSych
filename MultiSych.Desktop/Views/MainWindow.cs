@@ -33,6 +33,7 @@ public class MainWindow : Adw.ApplicationWindow
     private AIOverviewView? _aiOverviewView;
     private DocumentAnalyzerView? _documentAnalyzerView;
     private DocumentsView? _documentsView;
+    private CalendarView? _calendarView;
     private ErrorReportView? _errorReportView;
 
     public MainWindowViewModel? DataContext
@@ -116,6 +117,7 @@ public class MainWindow : Adw.ApplicationWindow
         AddNavigationRow("Chat", Loc.Get("nav.chat"));
         AddNavigationRow("Explorer", Loc.Get("nav.explorer"));
         AddNavigationRow("Documents", Loc.Get("nav.documents"));
+        AddNavigationRow("Calendar", Loc.Get("nav.calendar"));
         AddNavigationRow("Analyzer", Loc.Get("nav.analyzer"));
         AddNavigationRow("AI", Loc.Get("nav.ai"));
         AddNavigationRow("Sync", Loc.Get("nav.sync"));
@@ -352,6 +354,16 @@ public class MainWindow : Adw.ApplicationWindow
             }
             _documentsView.DataContext = documentsVm;
             _contentStack.SetVisibleChildName("Documents");
+        }
+        else if (currentVm is CalendarViewModel calendarVm)
+        {
+            if (_calendarView == null)
+            {
+                _calendarView = new CalendarView();
+                _contentStack.AddNamed(_calendarView, "Calendar");
+            }
+            _calendarView.DataContext = calendarVm;
+            _contentStack.SetVisibleChildName("Calendar");
         }
         else if (currentVm is ErrorReportViewModel errorReportVm)
         {

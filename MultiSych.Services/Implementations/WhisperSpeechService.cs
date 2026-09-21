@@ -40,10 +40,6 @@ namespace MultiSych.Services.Implementations
             _eventBus = eventBus;
         }
 
-#if WINDOWS
-        private System.Speech.Synthesis.SpeechSynthesizer? _synthesizer;
-#endif
-
         public async Task InitializeAsync(string modelPath)
         {
             _modelPath = modelPath;
@@ -193,26 +189,6 @@ namespace MultiSych.Services.Implementations
         {
             if (string.IsNullOrWhiteSpace(text)) return Task.CompletedTask;
 
-#if WINDOWS
-            if (OperatingSystem.IsWindows())
-            {
-                try
-                {
-                    if (_synthesizer == null)
-                    {
-                        _synthesizer = new System.Speech.Synthesis.SpeechSynthesizer();
-                        _synthesizer.SetOutputToDefaultAudioDevice();
-                    }
-                    _synthesizer.SpeakAsyncCancelAll();
-                    _synthesizer.SpeakAsync(text);
-                }
-                catch (Exception ex)
-                {
-                    _logger.Error(ex, "Failed to speak text");
-                }
-            }
-            else
-#endif
             if (OperatingSystem.IsMacOS())
             {
                 try
@@ -248,13 +224,6 @@ namespace MultiSych.Services.Implementations
 
         public void StopSpeaking()
         {
-#if WINDOWS
-            if (OperatingSystem.IsWindows())
-            {
-                try { _synthesizer?.SpeakAsyncCancelAll(); }
-                catch (Exception ex) { _logger.Warning(ex, "Konuşma sentezi iptal edilemedi"); }
-            }
-#endif
         }
 
         private string GetTargetLanguageCode()

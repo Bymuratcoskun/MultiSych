@@ -25,13 +25,18 @@ public class CalendarViewModel : ViewModelBase
     {
         _scopeFactory = scopeFactory;
         ClearFilterCommand = new RelayCommand(_ => SelectedDate = null, _ => SelectedDate.HasValue);
+        RefreshCommand = new RelayCommand(async _ => await LoadEventsAsync(), _ => !IsLoading);
         Task.Run(LoadEventsAsync);
     }
 
     public bool IsLoading
     {
         get => _isLoading;
-        set => SetProperty(ref _isLoading, value);
+        set
+        {
+            if (SetProperty(ref _isLoading, value))
+                (RefreshCommand as RelayCommand)?.RaiseCanExecuteChanged();
+        }
     }
 
     public DateTime? SelectedDate
@@ -48,6 +53,7 @@ public class CalendarViewModel : ViewModelBase
     }
 
     public ICommand ClearFilterCommand { get; }
+    public ICommand RefreshCommand { get; }
 
     private void ApplyFilter()
     {

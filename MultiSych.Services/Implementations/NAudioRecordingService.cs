@@ -3,7 +3,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
-using NAudio.Wave;
 using MultiSych.Services.Interfaces;
 using Serilog;
 
@@ -13,14 +12,8 @@ namespace MultiSych.Services.Implementations
     {
         private readonly ILogger _logger = Log.ForContext<NAudioRecordingService>();
         
-        // Windows NAudio specific fields
-        private WaveInEvent? _waveIn;
-        private WaveFileWriter? _writer;
-        
         // Linux/macOS process specific fields
         private Process? _recordProcess;
-        
-        private TaskCompletionSource<bool>? _stopTcs;
 
         public bool IsRecording { get; private set; }
 
@@ -35,25 +28,18 @@ namespace MultiSych.Services.Implementations
                 Directory.CreateDirectory(directory);
             }
 
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            var requiredCommand = RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? "arecord" : "ffmpeg";
+            if (!IsCommandAvailable(requiredCommand))
             {
-                StartWindowsRecording(outputPath);
+                var installCmd = RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
+                    ? "sudo apt install alsa-utils ffmpeg"
+                    : "brew install ffmpeg";
+                throw new MultiSych.Services.Exceptions.DependencyMissingException(
+                    requiredCommand,
+                    installCmd,
+                    $"Audio recording dependency '{requiredCommand}' is missing in system PATH. Please install it using: {installCmd}");
             }
-            else
-            {
-                var requiredCommand = RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? "arecord" : "ffmpeg";
-                if (!IsCommandAvailable(requiredCommand))
-                {
-                    var installCmd = RuntimeInformation.IsOSPlatform(OSPlatform.Linux) 
-                        ? "sudo apt install alsa-utils ffmpeg" 
-                        : "brew install ffmpeg";
-                    throw new MultiSych.Services.Exceptions.DependencyMissingException(
-                        requiredCommand, 
-                        installCmd, 
-                        $"Audio recording dependency '{requiredCommand}' is missing in system PATH. Please install it using: {installCmd}");
-                }
-                StartUnixRecording(outputPath);
-            }
+            StartUnixRecording(outputPath);
             
             IsRecording = true;
         }
@@ -73,61 +59,6 @@ namespace MultiSych.Services.Implementations
                 }
             }
             return false;
-        }
-
-        private void StartWindowsRecording(string outputPath)
-        {
-            _logger.Information("Starting Windows native recording using NAudio to: {Path}", outputPath);
-            
-            // Whisper modeli en iyi 16000 Hz, 1 Kanal (Mono) ses ile çalışır.
-            _waveIn = new WaveInEvent
-            {
-                WaveFormat = new WaveFormat(16000, 1)
-            };
-
-            _writer = new WaveFileWriter(outputPath, _waveIn.WaveFormat);
-
-            _waveIn.DataAvailable += (s, a) =>
-            {
-                byte[] buffer = a.Buffer;
-                int bytesRecorded = a.BytesRecorded;
-
-                // 16-bit PCM Mono ses verisini işleme
-                for (int i = 0; i < bytesRecorded; i += 2)
-                {
-                    short sample = (short)((buffer[i + 1] << 8) | buffer[i]);
-
-                    // Gürültü Kapısı (Noise Gate) - Dip fan/ortam gürültülerini temizle
-                    if (Math.Abs(sample) < 150)
-                    {
-                        sample = 0;
-                    }
-                    else
-                    {
-                        // Otomatik Kazanç Kontrolü (AGC) - Sinyali 1.5 katına çıkar
-                        int amplified = (int)(sample * 1.5);
-                        if (amplified > short.MaxValue) sample = short.MaxValue;
-                        else if (amplified < short.MinValue) sample = short.MinValue;
-                        else sample = (short)amplified;
-                    }
-
-                    buffer[i] = (byte)(sample & 0xFF);
-                    buffer[i + 1] = (byte)((sample >> 8) & 0xFF);
-                }
-
-                _writer.Write(buffer, 0, bytesRecorded);
-            };
-
-            _waveIn.RecordingStopped += (s, a) =>
-            {
-                _writer?.Dispose();
-                _writer = null;
-                _waveIn?.Dispose();
-                _waveIn = null;
-                _stopTcs?.TrySetResult(true);
-            };
-
-            _waveIn.StartRecording();
         }
 
         private void StartUnixRecording(string outputPath)
@@ -181,49 +112,40 @@ namespace MultiSych.Services.Implementations
             
             IsRecording = false;
 
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            if (_recordProcess != null && !_recordProcess.HasExited)
             {
-                _stopTcs = new TaskCompletionSource<bool>();
-                _waveIn?.StopRecording();
-                await _stopTcs.Task; // Wait for NAudio file release
-            }
-            else
-            {
-                if (_recordProcess != null && !_recordProcess.HasExited)
+                try
                 {
-                    try
+                    _logger.Information("Stopping Unix recording process gracefully...");
+                    // Send SIGINT (Ctrl+C signal) to process to write clean WAV headers
+                    using var killProcess = Process.Start(new ProcessStartInfo
                     {
-                        _logger.Information("Stopping Unix recording process gracefully...");
-                        // Send SIGINT (Ctrl+C signal) to process to write clean WAV headers
-                        using var killProcess = Process.Start(new ProcessStartInfo
-                        {
-                            FileName = "kill",
-                            Arguments = $"-2 {_recordProcess.Id}",
-                            CreateNoWindow = true,
-                            UseShellExecute = false
-                        });
-                        
-                        if (killProcess != null)
-                        {
-                            await killProcess.WaitForExitAsync();
-                        }
+                        FileName = "kill",
+                        Arguments = $"-2 {_recordProcess.Id}",
+                        CreateNoWindow = true,
+                        UseShellExecute = false
+                    });
 
-                        // Wait for process to shut down gracefully
-                        using (var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(3)))
-                        {
-                            await _recordProcess.WaitForExitAsync(cts.Token);
-                        }
-                    }
-                    catch (Exception ex)
+                    if (killProcess != null)
                     {
-                        _logger.Warning(ex, "Failed to gracefully stop Unix recording process. Force killing...");
-                        try { _recordProcess.Kill(); } catch { }
+                        await killProcess.WaitForExitAsync();
                     }
-                    finally
+
+                    // Wait for process to shut down gracefully
+                    using (var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(3)))
                     {
-                        _recordProcess.Dispose();
-                        _recordProcess = null;
+                        await _recordProcess.WaitForExitAsync(cts.Token);
                     }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning(ex, "Failed to gracefully stop Unix recording process. Force killing...");
+                    try { _recordProcess.Kill(); } catch { }
+                }
+                finally
+                {
+                    _recordProcess.Dispose();
+                    _recordProcess = null;
                 }
             }
         }

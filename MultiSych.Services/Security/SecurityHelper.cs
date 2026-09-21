@@ -353,7 +353,7 @@ namespace MultiSych.Services.Security
 
         private static void SetSecureFilePermissions(string filePath)
         {
-            if (!OperatingSystem.IsWindows())
+            if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
             {
                 try
                 {
@@ -361,7 +361,7 @@ namespace MultiSych.Services.Security
                 }
                 catch
                 {
-                    // Ignore permission fix failures on unsupported platforms.
+                    // Ignore permission fix failures on supported Unix platforms.
                 }
             }
         }

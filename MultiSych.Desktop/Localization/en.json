@@ -101,5 +101,12 @@
   "nav.ai": "🧠 AI Overview",
   "nav.sync": "🔄 Sync",
   "nav.logs": "🐞 Report Issue",
-  "nav.settings": "⚙️ Settings"
+  "nav.settings": "⚙️ Settings",
+  "nav.calendar": "📅 Calendar",
+  "calendar.title": "Calendar",
+  "calendar.refresh_button": "Refresh 🔄",
+  "calendar.clear_filter_button": "Clear Filter",
+  "calendar.loading": "Loading…",
+  "calendar.event_count_format": "{0} events",
+  "calendar.all_day": "All day"
 }

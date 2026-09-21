@@ -18,10 +18,6 @@
     <NoWarn>$(NoWarn);GirCore1007</NoWarn>
   </PropertyGroup>
 
-  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
-    <DefineConstants>$(DefineConstants);WINDOWS</DefineConstants>
-  </PropertyGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\MultiSych.Services\MultiSych.Services.csproj" />
   </ItemGroup>
@@ -37,7 +33,6 @@
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlcipher" Version="2.1.11" />
     <PackageReference Include="System.IO.Packaging" Version="10.0.12" />
     <PackageReference Include="Whisper.net.Runtime" Version="1.9.0" />
-    <PackageReference Include="Clowd.Squirrel" Version="2.11.1" Condition="$([MSBuild]::IsOSPlatform('Windows'))" />
     <PackageReference Include="DocumentFormat.OpenXml" Version="3.0.2" />
     <PackageReference Include="itext7" Version="8.0.4" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">

@@ -2,8 +2,6 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading.Tasks;
 using MultiSych.Services.Interfaces;
 using Serilog;
@@ -13,32 +11,16 @@ namespace MultiSych.Services.Implementations
     public class SecureStorageService : ISecureStorageService
     {
         private readonly ILogger _logger;
-        private readonly string _windowsSecretsFolder;
-
         public SecureStorageService()
         {
             _logger = Log.ForContext<SecureStorageService>();
-            
-            _windowsSecretsFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MultiSych", "Secrets");
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && !Directory.Exists(_windowsSecretsFolder))
-            {
-                Directory.CreateDirectory(_windowsSecretsFolder);
-            }
         }
 
         public async Task SaveSecretAsync(string key, string value)
         {
             try
             {
-#pragma warning disable CA1416 // Validate platform compatibility
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                {
-                    var encryptedBytes = ProtectedData.Protect(Encoding.UTF8.GetBytes(value), null, DataProtectionScope.CurrentUser);
-                    var filePath = Path.Combine(_windowsSecretsFolder, $"{key}.dat");
-                    await File.WriteAllBytesAsync(filePath, encryptedBytes);
-                }
-#pragma warning restore CA1416
-                else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
                 {
                     await RunProcessAsync("security", $"add-generic-password -s \"MultiSych\" -a \"{key}\" -w \"{value}\" -U");
                 }
@@ -60,18 +42,7 @@ namespace MultiSych.Services.Implementations
         {
             try
             {
-#pragma warning disable CA1416
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                {
-                    var filePath = Path.Combine(_windowsSecretsFolder, $"{key}.dat");
-                    if (!File.Exists(filePath)) return null;
-                    
-                    var encryptedBytes = await File.ReadAllBytesAsync(filePath);
-                    var decryptedBytes = ProtectedData.Unprotect(encryptedBytes, null, DataProtectionScope.CurrentUser);
-                    return Encoding.UTF8.GetString(decryptedBytes);
-                }
-#pragma warning restore CA1416
-                else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
                 {
                     return await RunProcessAsync("security", $"find-generic-password -s \"MultiSych\" -a \"{key}\" -w");
                 }
@@ -91,14 +62,7 @@ namespace MultiSych.Services.Implementations
         {
             try
             {
-#pragma warning disable CA1416
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                {
-                    var filePath = Path.Combine(_windowsSecretsFolder, $"{key}.dat");
-                    if (File.Exists(filePath)) File.Delete(filePath);
-                }
-#pragma warning restore CA1416
-                else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
                 {
                     await RunProcessAsync("security", $"delete-generic-password -s \"MultiSych\" -a \"{key}\"");
                 }

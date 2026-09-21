@@ -1,37 +1,14 @@
 using System;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Diagnostics;
 
 namespace MultiSych.Services.Implementations
 {
     public static class PowerStatusHelper
     {
-        [StructLayout(LayoutKind.Sequential)]
-        private struct Win32SystemPowerStatus
-        {
-            public byte ACLineStatus;
-            public byte BatteryFlag;
-            public byte BatteryLifePercent;
-            public byte SystemStatusFlag;
-            public int BatteryLifeTime;
-            public int BatteryFullLifeTime;
-        }
-
-        [DllImport("kernel32.dll", EntryPoint = "GetSystemPowerStatus", SetLastError = true)]
-        private static extern bool GetSystemPowerStatus(out Win32SystemPowerStatus lpSystemPowerStatus);
-
         public static bool IsOnBattery()
         {
-            if (OperatingSystem.IsWindows())
-            {
-                if (GetSystemPowerStatus(out var status))
-                {
-                    return status.ACLineStatus == 0; // 0 means offline (on battery)
-                }
-                return false;
-            }
-            else if (OperatingSystem.IsLinux())
+            if (OperatingSystem.IsLinux())
             {
                 try
                 {
@@ -88,15 +65,7 @@ namespace MultiSych.Services.Implementations
 
         public static int GetBatteryPercent()
         {
-            if (OperatingSystem.IsWindows())
-            {
-                if (GetSystemPowerStatus(out var status))
-                {
-                    return status.BatteryLifePercent == 255 ? 100 : status.BatteryLifePercent;
-                }
-                return 100;
-            }
-            else if (OperatingSystem.IsLinux())
+            if (OperatingSystem.IsLinux())
             {
                 try
                 {

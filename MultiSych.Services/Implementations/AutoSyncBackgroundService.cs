@@ -169,18 +169,15 @@ public class AutoSyncBackgroundService : BackgroundService
                 if (cancellationToken.IsCancellationRequested) break;
                 await storageService.SyncStorageAsync(account);
 
-                if (!System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+                try
                 {
-                    try
-                    {
-                        var mountProvider = scope.ServiceProvider.GetRequiredService<IPlatformMountProvider>();
-                        var targetFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "MultiSych_Drives", account.AccountId ?? string.Empty);
-                        await mountProvider.UpdateLocalMountFolderAsync(account.AccountId ?? string.Empty, targetFolder);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.Error(ex, "Failed to update local mount folder for account: {Email}", account.Email);
-                    }
+                    var mountProvider = scope.ServiceProvider.GetRequiredService<IPlatformMountProvider>();
+                    var targetFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "MultiSych_Drives", account.AccountId ?? string.Empty);
+                    await mountProvider.UpdateLocalMountFolderAsync(account.AccountId ?? string.Empty, targetFolder);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error(ex, "Failed to update local mount folder for account: {Email}", account.Email);
                 }
             }
 

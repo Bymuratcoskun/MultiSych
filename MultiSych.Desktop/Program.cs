@@ -21,9 +21,6 @@ using MultiSych.Services.Implementations;
 using MultiSych.Services.Interfaces;
 using MultiSych.Services.Security;
 using Serilog;
-#if WINDOWS
-using Squirrel;
-#endif
 using SQLitePCL;
 
 namespace MultiSych.Desktop;
@@ -36,14 +33,6 @@ internal static class Program
 
     public static int Main(string[] args)
     {
-#if WINDOWS
-        // Squirrel.Windows kurulum, güncelleme ve kaldırma olaylarını yönetir.
-        SquirrelAwareApp.HandleEvents(
-            onInitialInstall: OnAppInstall,
-            onAppUpdate: OnAppUpdate,
-            onAppUninstall: OnAppUninstall);
-#endif
-
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Information()
             .WriteTo.Console()
@@ -218,24 +207,6 @@ internal static class Program
             Log.CloseAndFlush();
         }
     }
-
-#if WINDOWS
-    private static void OnAppInstall(SemanticVersion version, IAppTools tools)
-    {
-        tools.CreateShortcutForThisExe(ShortcutLocation.StartMenu | ShortcutLocation.Desktop);
-    }
-
-    private static void OnAppUpdate(SemanticVersion version, IAppTools tools)
-    {
-        tools.CreateShortcutForThisExe(ShortcutLocation.StartMenu | ShortcutLocation.Desktop);
-    }
-
-    private static void OnAppUninstall(SemanticVersion version, IAppTools tools)
-    {
-        tools.RemoveShortcutForThisExe(ShortcutLocation.StartMenu | ShortcutLocation.Desktop);
-    }
-#endif
-
 
     private static MultiSychConfig CreateConfiguration()
     {

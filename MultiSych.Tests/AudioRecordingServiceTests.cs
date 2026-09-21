@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Runtime.InteropServices;
 using MultiSych.Services.Exceptions;
 using MultiSych.Services.Implementations;
 using Xunit;
@@ -12,10 +11,6 @@ namespace MultiSych.Tests
         [Fact]
         public void StartRecording_WhenDependencyMissingOnUnix_ShouldThrowDependencyMissingException()
         {
-            // Bu testi sadece Unix (Linux/macOS) işletim sistemlerinde çalıştırıyoruz
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                return;
-
             // Arrange
             var originalPath = Environment.GetEnvironmentVariable("PATH");
             try

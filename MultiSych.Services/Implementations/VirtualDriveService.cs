@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using MultiSych.Services.Interfaces;
 using Serilog;
@@ -61,7 +60,7 @@ public class VirtualDriveService : IVirtualDriveService, IDisposable
                 // açtırıyordu (VirtualDriveServiceTests: 3 test "acc_1" ile MountAsync=true mock'luyor).
                 try
                 {
-                    _mountProvider.RevealInFileManager(RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? drivePath : targetFolder);
+                    _mountProvider.RevealInFileManager(targetFolder);
                 }
                 catch (Exception ex)
                 {

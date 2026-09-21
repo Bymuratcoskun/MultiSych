@@ -101,5 +101,12 @@
   "nav.ai": "🧠 AI Genel Bakış",
   "nav.sync": "🔄 Senkronizasyon",
   "nav.logs": "🐞 Hata Bildir",
-  "nav.settings": "⚙️ Ayarlar"
+  "nav.settings": "⚙️ Ayarlar",
+  "nav.calendar": "📅 Takvim",
+  "calendar.title": "Takvim",
+  "calendar.refresh_button": "Yenile 🔄",
+  "calendar.clear_filter_button": "Filtreyi Temizle",
+  "calendar.loading": "Yükleniyor...",
+  "calendar.event_count_format": "{0} etkinlik",
+  "calendar.all_day": "Tüm gün"
 }

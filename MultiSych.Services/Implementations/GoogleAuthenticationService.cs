@@ -346,9 +346,7 @@ public class GoogleAuthenticationService : IAuthenticationService
         try { Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true }); }
         catch
         {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                Process.Start(new ProcessStartInfo("cmd", $"/c start {url.Replace("&", "^&")}") { CreateNoWindow = true });
-            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) Process.Start("xdg-open", url);
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) Process.Start("xdg-open", url);
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) Process.Start("open", url);
         }
     }

@@ -477,15 +477,7 @@ namespace MultiSych.Desktop.ViewModels
             try
             {
                 _logger.Information("Opening document URL in web: {Url}", file.WebEditUrl);
-                if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
-                {
-                    Process.Start(new ProcessStartInfo
-                    {
-                        FileName = file.WebEditUrl,
-                        UseShellExecute = true
-                    });
-                }
-                else if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Linux))
+                if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Linux))
                 {
                     Process.Start("xdg-open", file.WebEditUrl);
                 }
@@ -559,15 +551,7 @@ namespace MultiSych.Desktop.ViewModels
             try
             {
                 _logger.Information("Launching local editor for file: {Path}", filePath);
-                if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
-                {
-                    Process.Start(new ProcessStartInfo
-                    {
-                        FileName = filePath,
-                        UseShellExecute = true
-                    });
-                }
-                else if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Linux))
+                if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Linux))
                 {
                     Process.Start("xdg-open", filePath);
                 }

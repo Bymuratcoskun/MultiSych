@@ -585,3 +585,98 @@ iki JSON sözlükten tamamen temizlenmiş (grep sıfır sonuç). `dotnet build`
 taraması **tamamen kapandı** — 3 kritik (K12), 4 yüksek etkili (K14),
 2 orta (K15), 18 düşük/temizlik (K17) olmak üzere hepsi ele alındı,
 1 tanesi (4.7) yanlış alarm olarak doğrulanıp kapatıldı.
+
+---
+
+## K18 — WINDOWS DESTEĞİ TAMAMEN KALDIRILIYOR · 2026-09-21
+
+**Karar:** Operatör kararı: Windows tarafı uzun süre devre dışı
+kalacak, mümkünse tamamen kaldırılsın. Belki ileride Android sürümü
+düşünülecek (ayrı, gelecekteki bir karar — bugünün kapsamı değil).
+
+**Gerekçe:** Bu makine yalnız Linux, Windows tarafı hiç test edilemiyor
+(K7/K9/K17'de zaten defalarca "Windows-only, ölçülemez" notu düşüldü).
+Ölçülemeyen kod bakım yükü + yanlış güven kaynağı — ya gerçekten
+desteklenir (ve test edilir) ya da dürüstçe kaldırılır. Operatör
+ikinciyi seçti.
+
+**Ölçülen kapsam (grep ile):**
+- 6 dosyada `#if WINDOWS` bloğu, bunlardan 3'ü TAMAMEN Windows'a
+  özgü (dosyanın tamamı blok içinde) → silinecek:
+  `CloudVirtualFileSystem.cs` (1007 satır, DokanNet sanal sürücü),
+  `MultiSych.Tests/CloudVirtualFileSystemTests.cs`,
+  `MultiSych.Tests/BackgroundSyncOptimizationTests.cs` (281 satır).
+- 3 dosyada KISMİ `#if WINDOWS` blokları (dosyanın geri kalanı Linux/
+  macOS için kalacak) → yalnız bloklar silinecek:
+  `PlatformMountProvider.cs` (Dokan mount/unmount), `Program.cs`
+  (Squirrel kurulum kancaları), `WhisperSpeechService.cs` (System.Speech
+  TTS).
+- 12 dosyada ÇALIŞMA ZAMANI `OSPlatform.Windows` dalı (derleme zamanında
+  değil, `if/else` ile) → Windows dalı silinip Linux/macOS mantığı TEK
+  yol olacak.
+- 3 Windows'a özgü paket referansı (`DokanNet`, `Clowd.Squirrel`,
+  `System.Speech`) → tamamen kaldırılacak.
+
+**Sınır:** macOS dalları KALIYOR — operatör yalnız Windows'u kaldırmayı
+istedi, bu makine Linux+macOS'u destekleyen kısımlara dokunmuyor.
+
+**Uygulayan:** Codex, iş paketiyle
+(`docs/IS-PAKETI-windows-kaldirma.md`) — doğrudan `codex exec` ile
+çağrıldı (K17 sonrası kurulan doğrudan CLI erişimiyle, kopyala-yapıştır
+olmadan).
+
+---
+
+## K19 — CALENDARVİEWMODEL TAMAMLANDI, NAV'A BAĞLANDI · 2026-09-21
+
+**Karar:** K5'te ertelenen `CalendarViewModel` gerçekten tamamlandı ve
+bağlandı. Claude Code bizzat yaptı (mimari/nav bağlama işi).
+
+**Kapsam (bilinçli sınırlı — v1):**
+- `CalendarViewModel`'e `RefreshCommand` eklendi (mevcut `ClearFilterCommand`
+  ile birlikte).
+- Yeni `Views/CalendarView.cs`: `Gtk.Calendar` tarih seçici + etkinlik
+  listesi (başlık, saat, konum), yenile/filtre temizle butonları.
+- `MainWindowViewModel.CalendarPage` eklendi, DI'dan çözümleniyor.
+- `MainWindow.cs`: "📅 Takvim" nav satırı + `UpdateActiveView()` dalı
+  eklendi.
+- 7 yeni Loc anahtarı (`nav.calendar`, `calendar.*`), tr/en 110 anahtarla
+  eşit.
+- `tools/erisim-testi.sh`'in `ISTISNALAR` listesinden `CalendarViewModel`
+  çıkarıldı.
+
+**Bilinçli KAPSAM DIŞI (gelecek iş):** Etkinlik oluşturma/düzenleme/silme
+UI'ı YOK — `ICalendarService`'in tam CRUD'u zaten var (`CreateEventAsync`/
+`UpdateEventAsync`/`DeleteEventAsync`) ama bu View yalnız GÖRÜNTÜLÜYOR.
+Senkronizasyon zaten `AutoSyncBackgroundService` ve `sync-all` CLI
+komutu üzerinden otomatik çalışıyor (`SyncEventsAsync` — ayrıca
+doğrulandı, yeni bir şey kurulmadı). Tam CRUD arayüzü ayrı, gelecekteki
+bir iş paketi.
+
+**Kanıt:** `dotnet build` 0 hata, `dotnet test` 81/81,
+`tools/erisim-testi.sh` → `kayitli=15 erisilemez=0`, `tools/kapilar`
+8/8 yeşil. Gerçek uygulama koşumu temiz açıldı, hata yok — operatör
+görsel doğrulama yapacak.
+
+---
+
+## K20 — WINDOWS DESTEĞİ TAMAMEN KALDIRILDI (K18'in kapanışı) · 2026-09-21
+
+**Uygulayan:** Codex, iş paketiyle (`docs/IS-PAKETI-windows-kaldirma.md`)
+— iki ayrı `codex exec` çağrısıyla (ilki zaman aşımına uğrayıp yarım
+kaldı, ikincisi kalan kısmı bitirdi), doğrudan CLI erişimiyle.
+
+**✅ KABUL EDİLDİ.** Doğrulandı:
+- `grep -rn "#if WINDOWS" --include="*.cs" .` → boş.
+- `grep -rln "OSPlatform.Windows" --include="*.cs" .` → boş.
+- `OSPlatform.OSX` dalları SAĞLAM duruyor (spot-check: `SecureStorageService.cs`,
+  `PlatformMountProvider.cs`) — macOS'a dokunulmamış.
+- 3 dosya silindi (`CloudVirtualFileSystem.cs`, iki test dosyası),
+  3 paket kaldırıldı (`DokanNet`, `Clowd.Squirrel`, `System.Speech`).
+- `dotnet build` 0 uyarı 0 hata, `dotnet test` 81/81 (test dosyaları
+  zaten bu Linux makinede hiç çalışmıyordu — `WINDOWS` sembolü hiç
+  tanımlanmamıştı, o yüzden sayı değişmedi), `tools/kapilar` 8/8 yeşil.
+
+**Sonuç:** K18 ile K20 birlikte, operatörün "Windows'u kaldırabilirsen
+kaldır" talebi tamamen karşılandı. Android sürümü ayrı, gelecekteki bir
+karar — bugünün kapsamı değil.

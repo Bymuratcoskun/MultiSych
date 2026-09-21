@@ -19,10 +19,9 @@
 #   MainWindowViewModel   — sayfa değil, konteynerin kendisi
 #   AddAccountViewModel   — WindowService.ShowAddAccountDialog ile modal açılır
 #   NewEmailViewModel     — WindowService.ShowNewEmailDialog ile modal açılır
-#   CalendarViewModel     — K5 (docs/KARARLAR.md) ile bilinçli ertelendi:
-#                           ICalendarService'e hiç bağlı değil, View yazmak
-#                           yarım bir özelliği erişilebilir kılardı. FAZ 2
-#                           kapsamı dışı, ayrı bir iş paketi bekliyor.
+#
+# CalendarViewModel artık İSTİSNA DEĞİL — 2026-09-21'de gerçek View'a
+# (CalendarView.cs) bağlandı (bkz. docs/KARARLAR.md K19).
 set -uo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -34,7 +33,7 @@ if [ ! -f "$PROGRAM_CS" ] || [ ! -f "$MAIN_WINDOW_CS" ]; then
   exit 1
 fi
 
-ISTISNALAR="MainWindowViewModel AddAccountViewModel NewEmailViewModel CalendarViewModel"
+ISTISNALAR="MainWindowViewModel AddAccountViewModel NewEmailViewModel"
 
 mapfile -t KAYITLI < <(grep -oP 'AddTransient<\K[A-Za-z0-9_]+ViewModel(?=>)' "$PROGRAM_CS" | sort -u)
 

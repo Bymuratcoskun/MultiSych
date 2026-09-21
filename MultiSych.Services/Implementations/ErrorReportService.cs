@@ -1,5 +1,4 @@
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using MultiSych.Services.Interfaces;
@@ -73,7 +72,7 @@ namespace MultiSych.Services.Implementations
 
         private void SetSecureDirectoryPermissions(string directoryPath)
         {
-            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
             {
                 try
                 {
@@ -81,14 +80,14 @@ namespace MultiSych.Services.Implementations
                 }
                 catch
                 {
-                    // Ignore permission fix failures on unsupported platforms.
+                    // Ignore permission fix failures on supported Unix platforms.
                 }
             }
         }
 
         private void SetSecureFilePermissions(string filePath)
         {
-            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
             {
                 try
                 {
@@ -96,7 +95,7 @@ namespace MultiSych.Services.Implementations
                 }
                 catch
                 {
-                    // Ignore permission fix failures on unsupported platforms.
+                    // Ignore permission fix failures on supported Unix platforms.
                 }
             }
         }

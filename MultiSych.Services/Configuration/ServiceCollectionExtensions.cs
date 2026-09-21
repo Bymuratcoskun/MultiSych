@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Runtime.InteropServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -57,11 +56,8 @@ public static class ServiceCollectionExtensions
         // Plugin sistemi
         services.AddSingleton<IPluginLoader, PluginLoader>();
 
-        // Linux güncelleme servisi (Windows'ta Squirrel kullanılır)
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            services.AddSingleton<IUpdateService, LinuxUpdateService>();
-        }
+        // Linux güncelleme servisi
+        services.AddSingleton<IUpdateService, LinuxUpdateService>();
 
         return services;
     }
