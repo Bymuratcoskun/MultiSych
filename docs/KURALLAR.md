@@ -44,7 +44,30 @@ karşı yazıldı ve negatif kontrolle sınandı (kırmızı çıktıkları
 `docs/YOL-HARITASI.md` §0'da kayıtlı). Yeni bir kapı eklerken aynı
 disiplin: önce bilinen kırmızı durumu göster, sonra düzelt.
 
-## 3. Sudo gerektiren adımlar
+## 3. Codex ve Antigravity'ye doğrudan bağlanma (2026-09-21'den beri)
+
+Claude Code artık ikisine de kopyala-yapıştır olmadan, doğrudan terminalden
+bağlanabiliyor:
+
+- **Antigravity:** `~/.local/bin/agy` — çağırma yöntemi
+  `~/.claude/CLAUDE.md` §8'de yazılı, headless güvenilmezliği hâlâ geçerli
+  (yalnız oku+rapor işi ver).
+- **Codex:** `~/.codex/packages/standalone/current/codex exec -C <proje>
+  -s read-only|workspace-write "<prompt>"`. **Bilinen tuzak:** bu ikili
+  dosya okuma/komut çalıştırma için ayrı bir `codex-code-mode-host`
+  ikilisine ihtiyaç duyuyor; standart kurulumda eksik olabilir
+  (`~/.codex/packages/standalone/current/` altında yoksa "Code Mode
+  unavailable" hatası verir, TÜM araçlar sessizce başarısız olur).
+  2026-09-21'de bu makinede eksikti, `~/.codex/plugins/.plugin-appserver/codex-code-mode-host`'ta
+  bulunup doğru yere kopyalandı (`cp` + `chmod +x`). Yeni bir makinede/
+  kurulumda aynı hata çıkarsa aynı çözüm denenir; hâlâ yoksa VS Code
+  ChatGPT eklentisini yeniden kurmak/güncellemek gerekebilir.
+  **Kabul öncesi her zaman salt-okunur bir sınama yap** (örn. bilinen bir
+  dosyayı okutup içeriğin doğru geldiğini doğrula) — sandbox modu
+  (`read-only`/`workspace-write`/`danger-full-access`) işe göre seçilir,
+  varsayılan asla `danger-full-access` olmasın.
+
+## 4. Sudo gerektiren adımlar
 
 `.NET 10 SDK` kurulumu gibi sistem paket işlemleri önce operatöre
 söylenir, onaysız çalıştırılmaz (`~/Projelerim/KURALLAR.md` §0'daki
