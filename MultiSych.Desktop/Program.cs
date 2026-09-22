@@ -39,6 +39,44 @@ internal static class Program
             .WriteTo.File("logs/multisych-.txt", rollingInterval: RollingInterval.Day)
             .CreateLogger();
 
+        // ERKEN LOCALE KONTROLÜ — GTK'nın yerleşik widget'ları (örn. Gtk.Calendar'ın
+        // ay/gün isimleri) içeriden setlocale()/Environment.SetEnvironmentVariable
+        // çağrısına asla uymuyor; 2026-09-22'de operatör gerçek kullanımda üç kez
+        // ölçtü — yalnız SÜREÇ BAŞLAMADAN ÖNCE ayarlanan LC_ALL işe yaradı.
+        // Çözüm: kayıtlı dil, mevcut sürecin ortamıyla uyuşmuyorsa süreç kendini
+        // DOĞRU ortam değişkenleriyle bir kez yeniden başlatıyor (GTK/GNOME
+        // uygulamalarında bilinen bir teknik). MULTISYCH_LOCALE_APPLIED sonsuz
+        // döngüyü engelliyor.
+        if (Environment.GetEnvironmentVariable("MULTISYCH_LOCALE_APPLIED") != "1")
+        {
+            var desiredLocale = DetermineDesiredGlibcLocale();
+            var currentLcAll = Environment.GetEnvironmentVariable("LC_ALL");
+            if (desiredLocale != null && !string.Equals(currentLcAll, desiredLocale, StringComparison.OrdinalIgnoreCase))
+            {
+                var exePath = Environment.ProcessPath;
+                if (!string.IsNullOrEmpty(exePath))
+                {
+                    var psi = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = exePath,
+                        UseShellExecute = false,
+                    };
+                    foreach (var a in args) psi.ArgumentList.Add(a);
+                    psi.Environment["LC_ALL"] = desiredLocale;
+                    psi.Environment["LANG"] = desiredLocale;
+                    psi.Environment["LANGUAGE"] = desiredLocale;
+                    psi.Environment["MULTISYCH_LOCALE_APPLIED"] = "1";
+
+                    Log.Information("Locale {Locale} için süreç yeniden başlatılıyor (GTK yerleşik widget'ları için gerekli).", desiredLocale);
+                    Log.CloseAndFlush();
+
+                    using var relaunched = System.Diagnostics.Process.Start(psi);
+                    relaunched!.WaitForExit();
+                    return relaunched.ExitCode;
+                }
+            }
+        }
+
         try
         {
             Log.Information("MultiSych Desktop Application Starting...");
@@ -205,6 +243,41 @@ internal static class Program
         finally
         {
             Log.CloseAndFlush();
+        }
+    }
+
+    /// <summary>
+    /// Kullanıcının kayıtlı dil tercihini DI/host kurulmadan ÖNCE okur (bu yüzden
+    /// IUserSettingsService değil, ayar dosyasını doğrudan okuyoruz). Dosya yoksa
+    /// (ilk çalıştırma) null döner — o durumda süreç yeniden başlatılmaz, sistem
+    /// varsayılan locale'i ile açılır.
+    /// </summary>
+    private static string? DetermineDesiredGlibcLocale()
+    {
+        try
+        {
+            // Ayar dosyası yoksa (ilk çalıştırma) UserSettings.Language'ın kod
+            // içindeki varsayılanıyla (K18: bilerek "English") TUTARLI kalmak için
+            // null DEĞİL, doğrudan İngilizce varsayılanı döndürüyoruz — yoksa ilk
+            // çalıştırmada bizim JSON metinlerimiz İngilizce ama native takvim
+            // widget'ı sistem locale'inde (örn. Türkçe) kalır, tutarsızlık olur.
+            var settingsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MultiSych", "usersettings.json");
+            string? language = null;
+            if (System.IO.File.Exists(settingsPath))
+            {
+                var json = System.IO.File.ReadAllText(settingsPath);
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("Language", out var langProp))
+                    language = langProp.GetString();
+            }
+            return string.Equals(language, "Türkçe", StringComparison.OrdinalIgnoreCase)
+                ? "tr_TR.UTF-8"
+                : "en_US.UTF-8";
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "DetermineDesiredGlibcLocale: ayar dosyası okunamadı, yeniden başlatma atlanıyor.");
+            return null;
         }
     }
 
