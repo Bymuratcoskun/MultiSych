@@ -135,13 +135,14 @@ public class AutoSyncBackgroundService : BackgroundService
             using var scope = _scopeFactory.CreateScope();
             
             var accountStore = scope.ServiceProvider.GetRequiredService<IAccountStore>();
+            var authService = scope.ServiceProvider.GetRequiredService<IAuthenticationService>();
             var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
             var calendarService = scope.ServiceProvider.GetRequiredService<ICalendarService>();
             var storageService = scope.ServiceProvider.GetRequiredService<IStorageService>();
             var hybridAiService = scope.ServiceProvider.GetRequiredService<IHybridAIService>();
 
             var accounts = await accountStore.GetAccountsAsync();
-            
+
             if (accounts.Count == 0)
             {
                 _logger.Information("No connected accounts found for auto-sync.");
@@ -152,12 +153,32 @@ public class AutoSyncBackgroundService : BackgroundService
             {
                 if (cancellationToken.IsCancellationRequested)
                     break;
-                
+
+                // Token süresi dolmuşsa (ya da 1 dakika içinde dolacaksa) önce yenile —
+                // aksi halde her API çağrısı 401 ile başarısız olur ve kullanıcı
+                // "Süresi Doldu" görmeye devam eder (bkz. docs/KARARLAR.md K23:
+                // RefreshTokenAsync daha önce hiç çağrılmıyordu, ölü koddu).
+                if (authService.IsTokenExpired(account))
+                {
+                    _logger.Information("Token expired for {Provider} - {Email}, attempting refresh...", account.Provider, account.Email);
+                    var refreshed = await authService.RefreshTokenAsync(account);
+                    if (refreshed)
+                    {
+                        await accountStore.SaveAccountAsync(account);
+                        _logger.Information("Token refreshed for {Provider} - {Email}, new expiry {ExpiresAt}", account.Provider, account.Email, account.ExpiresAt);
+                    }
+                    else
+                    {
+                        _logger.Warning("Token refresh failed for {Provider} - {Email}; skipping this sync cycle for this account.", account.Provider, account.Email);
+                        continue;
+                    }
+                }
+
                 _logger.Information("Auto-syncing account: {Provider} - {Email}", account.Provider, account.Email);
-                
+
                 // Process any pending offline actions before syncing from cloud
                 await ProcessOfflineSyncQueueAsync(account, storageService, cancellationToken);
-                
+
                 await emailService.SyncEmailsAsync(account);
                 
                 // E-posta senkronizasyonu sonrası AI analizi

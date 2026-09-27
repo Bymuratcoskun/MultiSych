@@ -734,3 +734,173 @@ Connected accounts:
 "common" tenant'a güvenilen hiçbir gelecekteki Microsoft OAuth çağrısı
 artık sessizce çökmeyecek — boş string ve null artık aynı şekilde ele
 alınıyor.
+
+---
+
+## K22 — GERÇEK EK BULGULAR: SÜRÜCÜ ÇOĞALTMA + GERÇEK FUSE MOUNT KANITLANDI · 2026-09-27
+
+**Bulgu 1 (gerçek kullanım, operatör buldu):** Uygulama gerçekten
+çalıştırılıp kullanıldığında (yalnız CLI değil, GTK arayüzü) iki gerçek
+kusur ortaya çıktı:
+1. `IVirtualDriveService` DI'da Transient kayıtlıydı (`Program.cs:353`)
+   — her çözümlemede bellekte ayrı bir `_mountedDrives` sözlüğü oluşuyordu,
+   bu yüzden açılışta/arka planda yapılan bir mount ile Hesaplar
+   sayfasının kontrol ettiği örnek birbirini hiç görmüyordu, ekran
+   yanlışlıkla "Bağlı Değil" gösteriyordu. **Düzeltme:** Singleton'a
+   çevrildi. Bağımlılık zinciri (`IPlatformMountProvider` → `IStorageService`/
+   `CloudStorageService`) incelendi, `CloudStorageService`'in DbContext'i
+   doğrudan tutmadığı (`IServiceScopeFactory` ile ihtiyaç anında kendi
+   scope'unu açtığı) doğrulandığı için "captive dependency" riski yok.
+2. Veritabanında aynı e-posta için iki ayrı `AccountId` ile Google hesabı
+   iki kez kayıtlıydı (arayüzde Google iki kez listeleniyordu). Kesin
+   tetikleyici kod yolu bulunamadı (uzun bir statik arama yapıldı,
+   `SaveAccountAsync`'in AccountId eşleşmesine dayandığı ve hiçbir
+   yerin sessizce yeni GUID üretip yeniden kaydetmediği doğrulandı) —
+   muhtemelen oturumun daha erken bir testinden kalan bir yineleme.
+   Operatör "Remove" ile fazlalığı kendisi sildi. **Açık kalan:** kesin
+   tekrar üretim adımı bilinmiyor, tekrarlarsa ayrıca izlenmeli.
+
+**Bulgu 2 (çok daha büyük, README'nin temel vaadiyle ilgili):**
+Operatör "Mount Drive" ile gerçek bir hesabı (Microsoft) bağladığında,
+mount klasörü oluştu ama İÇİ BOŞTU — `PlatformMountProvider.MountLinuxAsync`
+gerçek bir dosya sistemi DEĞİL, yalnız bir sembolik bağlantı + veritabanı
+önbelleğindeki dosya adlarına göre 0 baytlık yer tutucu dosyalar
+oluşturuyor. README.md'nin "Sanal Sürücü (Virtual Drive): Bulut depolama
+alanlarınızı işletim sisteminize yerel bir disk gibi bağlayın (Mount)"
+vaadi bugüne kadar hiç gerçekleşmemiş — daha önce bir deneme yapılmış
+(`CloudFuseFileSystem.cs`, K17'de "kütüphane uyumsuzluğu" yorumuyla
+birlikte içi boş/sahte olduğu için silindi).
+
+**Araştırma ve KANITLANMIŞ çözüm (ölçüldü, iddia değil):**
+`LTRData.FuseDotNet` (nuget.org, MIT lisans, net10.0 derlemesi mevcut,
+Linux x64 + FUSE3 hedefliyor) bu makinede uçtan uca test edildi:
+- `dotnet add package LTRData.FuseDotNet` → 0 hata ile derlendi.
+- Resmi `MirrorFs` örneği (gerçek bir klasörü FUSE üzerinden yansıtan,
+  bizim ihtiyacımızla birebir örtüşen desen) indirilip net10.0'a
+  uyarlanarak çalıştırıldı.
+- İlk denemede `DllNotFoundException: fuse3` hatası alındı — kök sebep
+  ölçüldü: sistemde `libfuse3.so.4` var ama sürümsüz `libfuse3.so`
+  sembolik bağlantısı yoktu (yalnız `fuse3-devel` paketiyle geliyor).
+  `sudo dnf install -y fuse3-devel` ile doğrulandı — SORUN TAMAMEN
+  BUYDU, başka engel yok.
+- Düzeltmeden sonra: gerçek bir kernel-seviyesi mount kanıtlandı —
+  `/proc/mounts` çıktısı: `MirrorFs ... fuse.MirrorFs rw,nosuid,nodev,
+  relatime,user_id=1000,group_id=1000`. Kaynak klasördeki dosyalar
+  (`test.txt`, `altklasor/test2.txt`) mount noktasında doğru içerikle
+  göründü, mount üzerinden yazılan yeni bir dosya (`yeni-dosya.txt`)
+  gerçek kaynak klasöre yansıdı (geri yazma çalışıyor), `fusermount3 -u`
+  ile temiz unmount edildi. Hiçbir adımda `sudo` gerekmedi (yalnız
+  bir kerelik devel paketi kurulumu hariç).
+
+**Paketleme notu (henüz uygulanmadı):** Son kullanıcıya `fuse3-devel`
+kurdurmak istemeyiz (geliştirme paketi). Gerçek çözüm:
+`NativeLibrary.SetDllImportResolver` ile "fuse3" adını doğrudan
+`libfuse3.so.4`'e yönlendirmek — üçüncü parti pakete dokunmadan,
+kendi `Program.cs`'imizde. Bu, uygulamaya geçilirse ilk yapılacak iş.
+
+**Karar (operatör onayı bekleniyor, henüz uygulamaya geçilmedi):**
+Bu, bugünkü küçük düzeltmelerden çok daha büyük bir mimari iş —
+`PlatformMountProvider`'ın "simüle mount" (sembolik bağlantı + yer
+tutucu dosya) yaklaşımından gerçek FUSE tabanlı bir dosya sistemine
+geçirilmesi gerekiyor (okuma/yazma köprüsü, delta senkronizasyon ile
+entegrasyon, unmount/eject davranışı). Teknoloji seçimi ve
+çalışabilirliği KANITLANDI; uygulama kapsamı operatörle ayrıca
+netleştirilecek.
+
+**Bu bulgunun imkânsız kıldığı:** "FUSE bu makinede/kütüphanede
+çalışmıyor" varsayımı artık savunulamaz — ölçüldü, çalışıyor. Gelecekte
+biri "kütüphane uyumsuzluğu" gerekçesiyle vazgeçmeyi önerirse önce bu
+kaydı okumalı.
+
+---
+
+## K23 — GERÇEK FUSE MOUNT UYGULANDI (İLK ADIM) + TOKEN YENİLEME BAĞLANDI · 2026-09-27
+
+**Uygulanan (K22'nin onaylanan ilk adımı):**
+1. `MultiSych.Services/Implementations/CloudMirrorFsOperations.cs` (yeni) —
+   LTRData.FuseDotNet'in MIT lisanslı resmi `MirrorFs` örneğinden
+   uyarlandı. `PlatformMountProvider`'ın zaten doldurduğu ve
+   `FileSystemWatcher` ile izlediği gölge klasörü (`targetPath`) gerçek
+   bir FUSE mount noktasına yansıtıyor — yükleme/senkron mantığına
+   DOKUNULMADI, yalnız kullanıcıya sunuluş şekli sembolik bağlantıdan
+   gerçek kernel mount'una değişti.
+2. `PlatformMountProvider.cs`: `MountLinuxAsync` artık
+   `Directory.CreateSymbolicLink` yerine `operations.Mount(...)`'u ayrı
+   bir arka plan Task'ında başlatıp `/proc/mounts`'tan doğruluyor (3
+   saniyeye kadar bekleyip kanıt arıyor, "başladı" ile "gerçekten
+   bağlandı"yı karıştırmıyor). `UnmountLinuxAsync` artık
+   `fusermount3 -u` çağırıyor. Statik bir `NativeLibrary.SetDllImportResolver`
+   ile "fuse3" adı `libfuse3.so.4`'e yönlendiriliyor — son kullanıcının
+   `fuse3-devel` (bir GELİŞTİRME paketi) kurmasına gerek kalmasın diye.
+
+**🔴 KRİTİK HATA BULUNDU VE DÜZELTİLDİ (operatör gerçek kullanımda
+yakaladı):** İlk denemede operatör "Mount Drive"a bastığında **uygulama
+tamamen kilitlendi**. Kök sebep: `fuse_main`, README'nin de belirttiği
+gibi varsayılan olarak süreci native `fork()` ile ikiye ayırıyor — çok
+iş parçacıklı bir GTK/.NET uygulamasında (GC, thread pool, GTK ana
+döngüsü) bu güvenli değil. Doğrulandı: fork sonrası yetim bir arka plan
+süreci kalıyordu (`ps` ile görüldü, ayrı spike testinde de aynı desen
+tekrarlandı — `-f` olmadan mount kapandıktan SONRA bile süreç canlı
+kalıyordu). **Düzeltme:** `mountArgs`'a `"-f"` eklendi — `fuse_main`
+artık mevcut süreçte (bizim Task.Run arka plan iş parçacığımızda)
+kalıyor, fork hiç olmuyor. Spike'ta VE gerçek uygulamada doğrulandı:
+`-f` ile tek süreç, gerçek mount, donma yok.
+
+**Kanıt (gerçek uygulama, gerçek Microsoft hesabı):**
+```
+/proc/mounts: MultiSych ... fuse.MultiSych rw,nosuid,nodev,relatime,...
+ps: yalnız beklenen 3 süreç (dotnet run + shim + gerçek binary), fork yok
+```
+
+**Ayrıca bağlanan (aynı oturumda operatör "süresi doldu" bulgusunu
+ikinci kez bildirdi — artık Microsoft'ta da):**
+`AuthenticationService.RefreshTokenAsync` ve `IsTokenExpired` daha önce
+(bu dosyanın başındaki bulguda not edildiği gibi) hiçbir yerden
+çağrılmıyordu — token süresi dolunca uygulama sonsuza kadar "Süresi
+Doldu" gösteriyordu. `AutoSyncBackgroundService.PerformSyncAsync` ve CLI
+`sync-all` komutunun ikisine de senkronizasyondan ÖNCE
+`IsTokenExpired` kontrolü + `RefreshTokenAsync` + `SaveAccountAsync`
+(aynı AccountId ile güncelleme, yeni kayıt DEĞİL) eklendi.
+
+**Kanıt (gerçek `sync-all` koşumu, gerçek hesaplar):**
+```
+Google:    "Token refreshed, new expiry: 2026-09-27T15:39:46" — BAŞARILI
+Microsoft: "Token refresh FAILED" — BAŞARISIZ (biliniyor, aşağıda)
+Yandex:    token 1 yıllık kaydedildiği için bu pencerede hiç dolmadı, test edilmedi
+```
+
+**Açık kalan (ayrı, bugün çözülmedi):**
+1. **Microsoft token yenileme başarısız.** Kök sebep: MSAL'in
+   `PublicClientApplicationBuilder.Create()` çağrısı her seferinde
+   BELLEK İÇİ, kalıcı olmayan bir önbellekle taze bir nesne üretiyor —
+   `AcquireTokenSilent`'ın aradığı hesap (`GetAccountsAsync()`) hiçbir
+   zaman bulunamıyor çünkü orijinal interaktif girişteki MSAL nesnesi
+   çoktan yok edildi. Gerçek düzeltme: MSAL'in `ITokenCache` serileştirme
+   API'siyle (`RegisterCache`) diske kalıcı bir önbellek bağlamak —
+   ayrı bir iş, bu oturumun kapsamı dışında bırakıldı.
+2. **Google Gmail senkronizasyonu `403 Insufficient Permission`
+   veriyor** — token yenilemeyle İLGİSİZ, önceden var olan bir kusur:
+   `AuthenticationService.cs:43`'teki OAuth scope dizesi yalnız
+   `email profile calendar drive` istiyor, **gmail kapsamı hiç
+   istenmemiş**. Önceden bu, "süresi doldu" (401) hatasının arkasında
+   gizli kalıyordu; token yenilenince asıl kusur ortaya çıktı. Düzeltmek
+   için kullanıcının Google hesabını GENİŞLETİLMİŞ kapsamla (gmail
+   scope eklenmiş) yeniden bağlaması gerekiyor — mevcut refresh
+   token'a sonradan kapsam eklenemez, OAuth'un doğası bu.
+
+**Bilinçli kapsam dışı (K22'de zaten not edildi, bugün DEĞİŞMEDİ):**
+Mount edilen dosyaların içeriği hâlâ 0 baytlık yer tutucu — gerçek
+bulut içeriğinin talep üzerine indirilmesi (`Open`'da lazy-download)
+ayrı, gelecekteki bir iş.
+
+**Kanıt (derleme):** `dotnet build` 0 uyarı 0 hata (CA1416 uyarıları
+`SecureStorageService.cs`'teki mevcut desenle aynı şekilde, dar
+kapsamlı `#pragma warning disable/restore CA1416` ile bastırıldı —
+sınıf/proje geneline yayılan bir işaretleme DENENDİ ama
+`AutoSyncBackgroundService.cs` ve `Program.cs`'e sıçrayan yeni uyarılar
+ürettiği için geri alındı, dar kapsamlı çözüme dönüldü).
+
+**Bu kararın imkânsız kıldığı:** "Token süresi dolunca uygulama
+sonsuza kadar kırmızı kalır" artık yalnız Microsoft için doğru (bilinen
+sebeple) — Google ve (muhtemelen) Yandex için otomatik olarak
+kendini düzeltiyor.

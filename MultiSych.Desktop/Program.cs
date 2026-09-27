@@ -350,7 +350,7 @@ internal static class Program
                 });
                 services.AddSingleton<IAccountStore, AccountStoreService>();
                 services.AddTransient<IPlatformMountProvider, PlatformMountProvider>();
-                services.AddTransient<IVirtualDriveService, VirtualDriveService>();
+                services.AddSingleton<IVirtualDriveService, VirtualDriveService>();
                 
                 // Ayarların yeniden başlatma olmadan (Hot Reload) uygulanmasını sağlayan anlık durum servisi.
                 services.AddSingleton(sp =>
@@ -543,7 +543,7 @@ internal static class Program
                     return true;
 
                 case "sync-all":
-                    if (accountStore == null || emailService == null || calendarService == null || storageService == null)
+                    if (accountStore == null || emailService == null || calendarService == null || storageService == null || authService == null)
                     {
                         Console.WriteLine("Sync services are not fully available.");
                         return true;
@@ -558,6 +558,22 @@ internal static class Program
 
                     foreach (var account in syncAccounts)
                     {
+                        if (authService.IsTokenExpired(account))
+                        {
+                            Console.WriteLine($"Token expired for {account.Provider} - {account.Email}, attempting refresh...");
+                            var refreshed = await authService.RefreshTokenAsync(account);
+                            if (refreshed)
+                            {
+                                await accountStore.SaveAccountAsync(account);
+                                Console.WriteLine($"Token refreshed, new expiry: {account.ExpiresAt:O}");
+                            }
+                            else
+                            {
+                                Console.WriteLine($"Token refresh FAILED for {account.Provider} - {account.Email}, skipping.");
+                                continue;
+                            }
+                        }
+
                         Console.WriteLine($"Syncing account: {account.Provider} - {account.Email}");
                         await SafeSyncAsync(() => emailService.SyncEmailsAsync(account), account.Provider, "emails");
                         await SafeSyncAsync(() => calendarService.SyncEventsAsync(account), account.Provider, "calendar");

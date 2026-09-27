@@ -3,7 +3,10 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using System.Threading.Tasks;
+using System.Xml.Linq;
+using FuseDotNet;
 using Microsoft.EntityFrameworkCore;
 using MultiSych.Services.Data;
 using MultiSych.Services.Interfaces;
@@ -19,6 +22,32 @@ namespace MultiSych.Services.Implementations
         private readonly IStorageService _storageService;
         private readonly IDbContextFactory<LocalCacheDbContext> _dbContextFactory;
         private readonly RuntimeSyncSettings _runtimeSyncSettings;
+
+        // fuse3-devel paketi kurulu olmayan uçlarda sürümsüz "libfuse3.so" sembolik
+        // bağlantısı bulunmuyor (yalnız "libfuse3.so.4" var) — .NET'in P/Invoke çözücüsü
+        // sürüm son ekini otomatik denemiyor, bu yüzden LTRData.FuseDotNet'in aradığı
+        // "fuse3" adını burada elle sürümlü dosyaya yönlendiriyoruz. Bu makinede ölçüldü
+        // (docs/KARARLAR.md K22): çözücü olmadan DllNotFoundException, olunca çalışıyor.
+        static PlatformMountProvider()
+        {
+            NativeLibrary.SetDllImportResolver(typeof(IFuseOperations).Assembly, (libraryName, assembly, searchPath) =>
+            {
+                if (libraryName == "fuse3" && NativeLibrary.TryLoad("libfuse3.so.4", out var handle))
+                {
+                    return handle;
+                }
+                return IntPtr.Zero;
+            });
+        }
+
+        // Aktif FUSE mount'ları (mountPoint -> operasyon nesnesi) — Dispose ve
+        // UnmountAsync'in temizleyebilmesi için tutuluyor. CloudMirrorFsOperations
+        // yalnız linux/freebsd işaretli (K18'de Windows tamamen kaldırıldığı için bu
+        // sınıf da yalnız o platformlarda kullanılıyor) — CA1416 burada tek satırda
+        // bastırılıyor, SecureStorageService.cs'teki aynı desenle tutarlı.
+#pragma warning disable CA1416
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, CloudMirrorFsOperations> _activeFuseMounts = new();
+#pragma warning restore CA1416
 
         public PlatformMountProvider(IStorageService storageService, IDbContextFactory<LocalCacheDbContext> dbContextFactory, RuntimeSyncSettings runtimeSyncSettings)
         {
@@ -44,7 +73,7 @@ namespace MultiSych.Services.Implementations
                 Directory.CreateDirectory(targetPath);
             }
 
-            return await MountLinuxAsync(mountPoint, targetPath);
+            return await MountLinuxAsync(mountPoint, targetPath, volumeLabel);
         }
 
         public async Task<bool> UnmountAsync(string mountPoint)
@@ -54,23 +83,22 @@ namespace MultiSych.Services.Implementations
             return await UnmountLinuxAsync(mountPoint);
         }
 
-        private async Task<bool> MountLinuxAsync(string mountPoint, string targetPath)
+        private async Task<bool> MountLinuxAsync(string mountPoint, string targetPath, string volumeLabel)
         {
             try
             {
-                _logger.Information("Starting simulated Unix mount on {MountPoint} linking to {TargetPath}", mountPoint, targetPath);
-                
+                _logger.Information("Starting real FUSE mount on {MountPoint} mirroring {TargetPath}", mountPoint, targetPath);
+
                 if (!Directory.Exists(targetPath))
                 {
                     Directory.CreateDirectory(targetPath);
                 }
 
-                // Clean up mountPoint if it already exists (including broken symbolic links)
+                // Mount noktası boş bir gerçek klasör olmalı (FUSE bunu üstüne biner,
+                // sembolik bağlantı değil artık — bkz. docs/KARARLAR.md K22).
                 try { Directory.Delete(mountPoint, true); } catch { }
                 try { File.Delete(mountPoint); } catch { }
-
-                // Create symbolic link from mountPoint to targetPath
-                Directory.CreateSymbolicLink(mountPoint, targetPath);
+                Directory.CreateDirectory(mountPoint);
 
                 // Populate directory with metadata files from db
                 var accountId = Path.GetFileName(targetPath);
@@ -117,13 +145,73 @@ namespace MultiSych.Services.Implementations
 
                 _activeWatchers[mountPoint] = watcher;
 
+                // Gerçek FUSE mount'u ayrı bir arka plan iş parçacığında başlat — Mount()
+                // çağrısı unmount edilene kadar bloklar, bu yüzden burada await edilemez.
+#pragma warning disable CA1416
+                var operations = new CloudMirrorFsOperations(targetPath);
+                _activeFuseMounts[mountPoint] = operations;
+
+                // "-f" ŞART: fuse_main varsayılan olarak süreci native fork() ile ikiye
+                // ayırıyor. Çok iş parçacıklı bir .NET/GTK uygulamasında (GC, thread pool,
+                // GTK ana döngüsü) fork() güvenli değil — bu makinede ölçüldü, "-f" olmadan
+                // uygulama Mount Drive'a basınca donuyordu (K22 düzeltmesi). "-f" ile
+                // fuse_main mevcut süreçte (bizim Task.Run arka plan iş parçacığımızda)
+                // kalıp unmount edilene kadar bloklanıyor — fork hiç olmuyor.
+                var mountArgs = new[] { "MultiSych", mountPoint, "-f" };
+                _ = Task.Run(() =>
+                {
+                    try
+                    {
+                        operations.Mount(mountArgs, new FuseDotNet.Logging.ConsoleLogger());
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Error(ex, "FUSE mount thread'i beklenmedik şekilde sonlandı: {MountPoint}", mountPoint);
+                        _activeFuseMounts.TryRemove(mountPoint, out _);
+                    }
+                });
+#pragma warning restore CA1416
+
+                // fuse_main gerçekten mount'u kurana kadar kısa bir süre bekleyip
+                // /proc/mounts'tan doğruluyoruz — "başladı" ile "gerçekten bağlandı"
+                // farklı şeyler, iddia değil kanıt istiyoruz.
+                var mounted = false;
+                for (var i = 0; i < 30; i++)
+                {
+                    await Task.Delay(100);
+                    if (IsRealMountActive(mountPoint)) { mounted = true; break; }
+                }
+
+                if (!mounted)
+                {
+                    _logger.Error("FUSE mount {MountPoint} için /proc/mounts'ta zamanında doğrulanamadı.", mountPoint);
+#pragma warning disable CA1416
+                    _activeFuseMounts.TryRemove(mountPoint, out _);
+#pragma warning restore CA1416
+                    return false;
+                }
+
+                AddDolphinBookmark(mountPoint, volumeLabel);
+
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.Error(ex, "Exception during Linux symlink mount setup");
+                _logger.Error(ex, "Exception during Linux FUSE mount setup");
             }
             return false;
+        }
+
+        private static bool IsRealMountActive(string mountPoint)
+        {
+            try
+            {
+                return File.ReadAllLines("/proc/mounts").Any(line => line.Contains(" " + mountPoint + " "));
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private Task<bool> UnmountLinuxAsync(string mountPoint)
@@ -131,27 +219,112 @@ namespace MultiSych.Services.Implementations
             try
             {
                 _logger.Information("Unmounting Unix mount point: {MountPoint}", mountPoint);
-                
+
                 if (_activeWatchers.TryRemove(mountPoint, out var watcher))
                 {
                     watcher.EnableRaisingEvents = false;
                     watcher.Dispose();
                 }
 
-                // Clean up mountPoint if it already exists (including broken symbolic links)
-                try { Directory.Delete(mountPoint, false); }
-                catch
+                RemoveDolphinBookmark(mountPoint);
+
+#pragma warning disable CA1416
+                if (_activeFuseMounts.TryRemove(mountPoint, out _))
                 {
-                    try { File.Delete(mountPoint); } catch { }
+                    // Gerçek FUSE mount'ları "fusermount3 -u" ile kaldırılır (FuseDotNet
+                    // kod içinden unmount API'si sunmuyor — README bunu da söylüyor).
+                    // Bu makinede doğrulandı (K22 spike): temiz şekilde unmount ediyor.
+                    using var process = Process.Start(new ProcessStartInfo
+                    {
+                        FileName = "fusermount3",
+                        ArgumentList = { "-u", mountPoint },
+                        UseShellExecute = false,
+                        RedirectStandardError = true
+                    });
+                    process?.WaitForExit(5000);
+                    if (process != null && process.ExitCode != 0)
+                    {
+                        var err = process.StandardError.ReadToEnd();
+                        _logger.Warning("fusermount3 -u {MountPoint} sıfırdan farklı çıkış kodu döndü: {ExitCode} {Error}", mountPoint, process.ExitCode, err);
+                    }
                 }
-                
+#pragma warning restore CA1416
+
+                try { Directory.Delete(mountPoint, false); } catch { }
+
                 return Task.FromResult(true);
             }
-            catch (Exception ex) 
-            { 
-                _logger.Error(ex, "Exception during Linux unmount"); 
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Exception during Linux unmount");
             }
             return Task.FromResult(false);
+        }
+
+        // KDE Dolphin (ve diğer XBEL uyumlu dosya yöneticileri), bağlanan sanal sürücüleri
+        // kendiliğinden "Yerler" (Places) kenar çubuğunda göstermez — bu yalnızca gerçek
+        // GVfs/udisks aygıtları için otomatik olur. Bizim mount bir sembolik bağlantı
+        // olduğu için burayı elle ~/.local/share/user-places.xbel'e yazarak sağlıyoruz.
+        // Dolphin bu dosyayı canlı izliyor, yeniden başlatma gerekmiyor.
+        private static string GetDolphinPlacesFilePath() =>
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "user-places.xbel");
+
+        private void AddDolphinBookmark(string mountPoint, string volumeLabel)
+        {
+            try
+            {
+                var path = GetDolphinPlacesFilePath();
+                XDocument doc;
+                if (File.Exists(path))
+                {
+                    doc = XDocument.Load(path);
+                }
+                else
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                    doc = new XDocument(new XElement("xbel"));
+                }
+
+                var root = doc.Root!;
+                var href = new Uri(mountPoint).AbsoluteUri;
+
+                // Aynı mount noktası için eski bir kayıt varsa önce temizle (tekrar mount durumu)
+                root.Elements("bookmark").Where(b => (string?)b.Attribute("href") == href).Remove();
+
+                var bookmark = new XElement("bookmark",
+                    new XAttribute("href", href),
+                    new XElement("title", volumeLabel));
+                root.Add(bookmark);
+
+                doc.Save(path);
+                _logger.Information("Dolphin 'Yerler' kısayolu eklendi: {Label} -> {MountPoint}", volumeLabel, mountPoint);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning(ex, "Dolphin 'Yerler' kısayolu eklenemedi (kritik değil, mount yine de çalışıyor).");
+            }
+        }
+
+        private void RemoveDolphinBookmark(string mountPoint)
+        {
+            try
+            {
+                var path = GetDolphinPlacesFilePath();
+                if (!File.Exists(path)) return;
+
+                var doc = XDocument.Load(path);
+                var href = new Uri(mountPoint).AbsoluteUri;
+                var removed = doc.Root!.Elements("bookmark").Where(b => (string?)b.Attribute("href") == href).ToList();
+                if (removed.Count == 0) return;
+
+                foreach (var b in removed) b.Remove();
+                doc.Save(path);
+                _logger.Information("Dolphin 'Yerler' kısayolu kaldırıldı: {MountPoint}", mountPoint);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning(ex, "Dolphin 'Yerler' kısayolu kaldırılamadı (kritik değil).");
+            }
         }
 
         public void RevealInFileManager(string path)
