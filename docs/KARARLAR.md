@@ -680,3 +680,57 @@ kaldı, ikincisi kalan kısmı bitirdi), doğrudan CLI erişimiyle.
 **Sonuç:** K18 ile K20 birlikte, operatörün "Windows'u kaldırabilirsen
 kaldır" talebi tamamen karşılandı. Android sürümü ayrı, gelecekteki bir
 karar — bugünün kapsamı değil.
+
+---
+
+## K21 — GERÇEK OAUTH HESAPLARI BAĞLANDI, MICROSOFT TENANT HATASI DÜZELTİLDİ · 2026-09-27
+
+**Karar:** Üç sağlayıcı (Google, Microsoft, Yandex) için operatörün
+kendi oluşturduğu OAuth uygulama kimlik bilgileriyle gerçek hesap
+bağlantısı kuruldu ve `list-accounts` ile bağımsız doğrulandı. Değerler
+`.env`'e yazıldı (gitignore'da, hiçbir zaman sohbete/commit'e girmedi).
+
+**Bulgu (kod hatası, Microsoft akışını tamamen engelliyordu):**
+`auth-microsoft` komutu OAuth tarayıcı akışına hiç girmeden
+`ArgumentNullException: Value cannot be null. (Parameter 'tenant')`
+ile çöküyordu. Kök sebep: `Program.cs:297`'de `MICROSOFT_TENANT_ID`
+ortam değişkeni tanımlı değilse `TenantId` `string.Empty` oluyor
+(`null` DEĞİL). `AuthenticationService.cs`'teki iki ayrı yerde
+(`AuthenticateMicrosoftAsync` satır 103, token yenileme yolu satır 323)
+`tenantId ?? "common"` deseni yalnız `null`'ı yakalıyor, boş string'i
+"common"a çevirmiyor — MSAL'e boş `tenant` gidip kendi içinde
+`ArgumentNullException` fırlatıyordu. Düzeltme: her iki yerde de
+`string.IsNullOrWhiteSpace(tenantId) ? "common" : tenantId` deseni.
+
+**Ek bulgu (Azure config, kod değil):** Düzeltmeden sonra ikinci bir
+hata çıktı: `AADSTS70002: The provided request must include a
+'client_secret' input parameter.` Kök sebep Azure App Registration'ın
+"Web" platformu olarak eklenmiş olmasıydı — Azure "Web" platformunu
+confidential client sayıp her istekte `client_secret` zorunlu kılıyor,
+oysa kod `PublicClientApplicationBuilder` (native/masaüstü akışı,
+PKCE, secret gerektirmez) kullanıyor. Operatör Azure'da platformu
+"Mobile and desktop applications"a çevirip aynı redirect URI'yi
+(`http://localhost:5000/`) oraya taşıyınca çözüldü.
+
+**Ek bulgu (dokümantasyon, gerçek olmayan yapılandırma):**
+`.env.example`'daki `GOOGLE_REDIRECT_URI`/`MICROSOFT_REDIRECT_URI`/
+`YANDEX_REDIRECT_URI` satırları kod tarafından HİÇBİR ZAMAN
+okunmuyordu (`grep` ile doğrulandı) — üç sağlayıcı için de yönlendirme
+adresi `Program.cs`'te sabit `http://localhost:5000/`. Yanıltıcı
+satırlar kaldırıldı, yerine kodun gerçekte ne yaptığını açıklayan not
+eklendi.
+
+**Kanıt (üçü de bağımsız `list-accounts` çıktısıyla doğrulandı, iddia
+değil):**
+```
+Connected accounts:
+- Google: mc.mavibulut.1984@gmail.com
+- Microsoft: mc.mavibulut.1984@outlook.com.tr
+- Yandex: bymuratcoskun@yandex.com
+```
+`dotnet build` 0 uyarı 0 hata.
+
+**Bu kararın imkânsız kıldığı:** `MICROSOFT_TENANT_ID` boş bırakılıp
+"common" tenant'a güvenilen hiçbir gelecekteki Microsoft OAuth çağrısı
+artık sessizce çökmeyecek — boş string ve null artık aynı şekilde ele
+alınıyor.

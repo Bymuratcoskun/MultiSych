@@ -100,7 +100,7 @@ public class AuthenticationService : IAuthenticationService
     public async Task<AccountCredentials> AuthenticateMicrosoftAsync(string clientId, string clientSecret, string redirectUrl, string? tenantId)
     {
         var app = PublicClientApplicationBuilder.Create(clientId)
-            .WithAuthority(AzureCloudInstance.AzurePublic, tenantId ?? "common")
+            .WithAuthority(AzureCloudInstance.AzurePublic, string.IsNullOrWhiteSpace(tenantId) ? "common" : tenantId)
             .WithRedirectUri(redirectUrl)
             .Build();
 
@@ -320,7 +320,7 @@ public class AuthenticationService : IAuthenticationService
                 }
 
                 var app = PublicClientApplicationBuilder.Create(clientId)
-                    .WithAuthority(AzureCloudInstance.AzurePublic, _config.Microsoft?.TenantId ?? "common")
+                    .WithAuthority(AzureCloudInstance.AzurePublic, string.IsNullOrWhiteSpace(_config.Microsoft?.TenantId) ? "common" : _config.Microsoft.TenantId)
                     .Build();
 
                 var accounts = await app.GetAccountsAsync();
