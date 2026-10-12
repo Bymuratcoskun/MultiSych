@@ -615,6 +615,22 @@ internal static class Program
                     Console.WriteLine(unmountOk ? "Unmounted." : "Failed to unmount (was it mounted?).");
                     return true;
 
+                case "remove-account":
+                    if (accountStore == null)
+                    {
+                        Console.WriteLine("Account store service is not available.");
+                        return true;
+                    }
+                    if (args.Length < 2)
+                    {
+                        Console.WriteLine("Usage: remove-account <accountId>");
+                        return true;
+                    }
+
+                    await accountStore.DeleteAccountAsync(args[1]);
+                    Console.WriteLine($"Removed account {args[1]} (if it existed).");
+                    return true;
+
                 case "sync-all":
                     if (accountStore == null || emailService == null || calendarService == null || storageService == null || authService == null)
                     {

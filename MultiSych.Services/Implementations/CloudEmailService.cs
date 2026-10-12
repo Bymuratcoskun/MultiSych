@@ -177,7 +177,7 @@ namespace MultiSych.Services.Implementations
 
             await client.ConnectAsync("imap.yandex.com", 993, SecureSocketOptions.SslOnConnect);
 
-            var oauth2 = new SaslMechanismOAuthBearer(credentials.Email ?? string.Empty, credentials.AccessToken ?? string.Empty);
+            var oauth2 = new SaslMechanismOAuth2(credentials.Email ?? string.Empty, credentials.AccessToken ?? string.Empty);
             await client.AuthenticateAsync(oauth2);
 
             await client.Inbox!.OpenAsync(MailKit.FolderAccess.ReadOnly);
@@ -359,7 +359,7 @@ namespace MultiSych.Services.Implementations
             using var client = new SmtpClient();
             await client.ConnectAsync("smtp.yandex.com", 465, SecureSocketOptions.SslOnConnect);
 
-            var oauth2 = new SaslMechanismOAuthBearer(credentials.Email ?? string.Empty, credentials.AccessToken ?? string.Empty);
+            var oauth2 = new SaslMechanismOAuth2(credentials.Email ?? string.Empty, credentials.AccessToken ?? string.Empty);
             await client.AuthenticateAsync(oauth2);
 
             await client.SendAsync(mimeMessage);
@@ -514,7 +514,7 @@ namespace MultiSych.Services.Implementations
             using var client = new ImapClient();
             await client.ConnectAsync("imap.yandex.com", 993, SecureSocketOptions.SslOnConnect);
 
-            var oauth2 = new SaslMechanismOAuthBearer(credentials.Email ?? string.Empty, credentials.AccessToken ?? string.Empty);
+            var oauth2 = new SaslMechanismOAuth2(credentials.Email ?? string.Empty, credentials.AccessToken ?? string.Empty);
             await client.AuthenticateAsync(oauth2);
 
             await client.Inbox!.OpenAsync(MailKit.FolderAccess.ReadOnly);
@@ -620,7 +620,7 @@ namespace MultiSych.Services.Implementations
             using var client = new ImapClient();
             await client.ConnectAsync("imap.yandex.com", 993, SecureSocketOptions.SslOnConnect);
 
-            var oauth2 = new SaslMechanismOAuthBearer(credentials.Email ?? string.Empty, credentials.AccessToken ?? string.Empty);
+            var oauth2 = new SaslMechanismOAuth2(credentials.Email ?? string.Empty, credentials.AccessToken ?? string.Empty);
             await client.AuthenticateAsync(oauth2);
 
             await client.Inbox!.OpenAsync(MailKit.FolderAccess.ReadWrite);
@@ -712,7 +712,7 @@ namespace MultiSych.Services.Implementations
             using var client = new ImapClient();
             await client.ConnectAsync("imap.yandex.com", 993, SecureSocketOptions.SslOnConnect);
 
-            var oauth2 = new SaslMechanismOAuthBearer(credentials.Email ?? string.Empty, credentials.AccessToken ?? string.Empty);
+            var oauth2 = new SaslMechanismOAuth2(credentials.Email ?? string.Empty, credentials.AccessToken ?? string.Empty);
             await client.AuthenticateAsync(oauth2);
 
             await client.Inbox!.OpenAsync(MailKit.FolderAccess.ReadWrite);

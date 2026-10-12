@@ -1459,3 +1459,70 @@ kanıtlandı:** K25 (lazy-download) → K27 (Google Docs export) → K30
 ayrı, gerçek hata, hepsi gerçek kullanımda bulunup düzeltildi. Hiçbiri
 "muhtemelen çalışır" değil, her biri ekran görüntüsü veya komut
 çıktısıyla kanıtlandı.
+
+---
+
+## K33 — GMAIL ETKİNLEŞTİRİLDİ, YANDEX YANLIŞ SASL MEKANİZMASI DÜZELTİLDİ, HESAP ÇOĞALMASININ GERÇEK KÖK SEBEBİ BULUNDU (K22'nin ÇÖZÜMÜ) · 2026-10-12
+
+**Gmail:** Operatör Google Cloud Console'da Gmail API'yi etkinleştirdi.
+`sync-all` ile doğrulandı: **15 gerçek e-posta** senkronize edildi.
+
+**Yandex Mail izni:** Operatör Yandex OAuth panelinde kullanılmayan
+"Yandex.Direct API'sine erişim" iznini kaldırıp yerine Mail iznini
+(`mail:imap_full`) ekledi (Yandex en fazla 3 farklı izin grubuna izin
+veriyor, zaten doluyduk). Yeniden bağlanıldı.
+
+**🔴 Bulunan gerçek kod hatası — yanlış SASL mekanizması:** İzin
+eklendikten sonra bile `MailKit.Security.AuthenticationException:
+Authentication failed` devam etti. Geçici bir `MailKit.ProtocolLogger`
+ile ham IMAP trafiği incelendi (yalnız sunucu yanıtları okundu, token
+hiç loglanmadı/basılmadı). Gerçek sunucu yanıtı:
+```
+S: * CAPABILITY ... AUTH=PLAIN AUTH=XOAUTH2 ...
+S: A00000001 BAD AUTHENTICATE Command syntax error.
+```
+Yandex'in IMAP sunucusu yalnız `AUTH=XOAUTH2`'yi destekliyor —
+`AUTH=OAUTHBEARER`'ı hiç tanımıyor. Kodumuz ise `SaslMechanismOAuthBearer`
+(OAUTHBEARER, RFC 7628) kullanıyordu — sunucu bu komutun SÖZDİZİMİNİ bile
+tanımadığı için "BAD...syntax error" diyordu; MailKit bunu genel bir
+"Authentication failed" hatasına sarıyordu, asıl sebep gizli kalıyordu.
+**Düzeltme:** `CloudEmailService.cs`'teki 5 canlı çağrı yeri
+`SaslMechanismOAuth2` (gerçek XOAUTH2) ile değiştirildi.
+
+**🔴 K22'nin ÇÖZÜLMEMİŞ BULGUSUNUN GERÇEK KÖK SEBEBİ BULUNDU — hesap
+çoğalması:** Yandex'i yeniden bağlarken (yeni Mail izniyle) `list-accounts`
+aynı Yandex hesabını **iki kez** gösterdi. Kök sebep kesinleşti:
+`AccountStoreService.SaveAccountAsync` yalnız `AccountId`'ye göre
+arıyordu — ama her interaktif auth çağrısı (`AuthenticateGoogleAsync`/
+`Microsoft`/`Yandex`) HER SEFERİNDE `Guid.NewGuid()` ile yeni bir
+AccountId üretiyor. Aynı gerçek hesap (kapsam genişletmek, token
+yenilemek için) yeniden bağlanınca bu yüzden hep YENİ bir satır
+ekleniyordu — K22'de "kesin tetikleyici bulunamadı" denen bulgunun tam
+açıklaması bu. **Düzeltme:** Arama artık `Provider`+`Email` (gerçek iş
+anahtarı) ile yapılıyor; bulunursa var olan satırın `AccountId`'si
+BİLEREK değiştirilmeden yalnız token/tarih alanları güncelleniyor —
+`CloudFiles`/`CachedEmails`/`CachedEvents` gibi tabloların string
+`AccountId` referansları yetim kalmıyor. Test için `remove-account
+<accountId>` CLI komutu eklendi (mevcut çift kayıt elle temizlendi).
+
+**Kanıt (gerçek `sync-all` koşumu, düzeltmeler sonrası):**
+```
+Google:    Successfully synced 15 emails
+Microsoft: Successfully synced 11 emails
+Yandex:    Successfully synced 2 emails
+```
+Üç sağlayıcının da e-posta senkronu artık **gerçekten** çalışıyor —
+projenin tarihinde ilk kez.
+
+**Açık kalan, bilinçli sınır:** Yandex takvimi (CalDAV) hâlâ 401
+veriyor — Calendar izin grubu eklenemedi, çünkü Yandex'in 3-grup
+sınırında zaten Login(ID)+Disk+Mail dolu; Calendar için ikisinden
+birinin (ID veya Disk, ikisi de gerçekten kullanılıyor) feda edilmesi
+gerekirdi. Bilinçli olarak yapılmadı — düşük öncelikli, ayrı bir karar
+gerektirir (operatöre sorulmadan bırakıldı).
+
+`dotnet build` 0 hata, `tools/kapilar` 8/8 yeşil.
+
+**Bu kararın imkânsız kıldığı:** K22'den beri "hesap neden çoğalıyor,
+bilinmiyor" belirsizliği — artık kesin biliniyor ve yapısal olarak
+(UNIQUE değil ama upsert-by-business-key ile) imkânsız kılındı.

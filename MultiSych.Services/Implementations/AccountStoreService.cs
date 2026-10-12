@@ -113,15 +113,26 @@ namespace MultiSych.Services.Implementations
             try
             {
                 await using var context = await _dbContextFactory.CreateDbContextAsync();
-                var existing = await context.Accounts.FirstOrDefaultAsync(a => a.AccountId == credentials.AccountId);
+                // K33 (gerçek kullanımda yakalandı, 2026-10-12 — K22'nin
+                // "hesap çoğalıyor, kök sebep bulunamadı" notunun ÇÖZÜMÜ):
+                // Önceden yalnız AccountId'ye bakılıyordu — ama her interaktif
+                // auth çağrısı (AuthenticateGoogleAsync/Microsoft/Yandex) HER
+                // SEFERİNDE yeni bir AccountId = Guid.NewGuid() üretiyor. Aynı
+                // gerçek hesap (ör. izin kapsamı genişletmek için) yeniden
+                // bağlanınca bu yüzden her zaman YENİ bir satır ekleniyordu —
+                // tekilleştirme hiç yoktu. Gerçek iş anahtarı Provider+Email;
+                // ona göre arıyoruz. Var olan satırın AccountId'si BİLEREK
+                // değiştirilmiyor — CloudFiles/CachedEmails/CachedEvents gibi
+                // tablolar ona string referans veriyor, değiştirirsek onları
+                // yetim bırakırız.
+                var existing = await context.Accounts.FirstOrDefaultAsync(
+                    a => a.Provider == credentials.Provider && a.Email == credentials.Email);
                 if (existing == null)
                 {
                     await context.Accounts.AddAsync(ToEntity(credentials));
                 }
                 else
                 {
-                    existing.Email = credentials.Email;
-                    existing.Provider = credentials.Provider;
                     existing.AccessToken = credentials.AccessToken;
                     existing.RefreshToken = credentials.RefreshToken;
                     existing.ExpiresAt = credentials.ExpiresAt;
