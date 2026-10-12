@@ -127,17 +127,34 @@ okuyor — rehberde "akışlı" denmişti, bu YANLIŞTI. Büyük bir dosya
 byte-range indirme) ayrı, daha büyük bir iş — şimdilik yalnız
 belgelendirilecek, bilinen bir sınır olarak.
 
-**⚠️ DOĞRULAMA EKSİK (K25'in asıl kapsamı için hâlâ geçerli):** PDF/düz
-metin dosyalarıyla gerçek bir indirmeyle uçtan uca KANITLANAMADI — tek
-dolu hesabın (Google) token'ı ölü çıktı, operatör o an yeniden
-bağlanamadı. Ayrıntı ve sonraki adım: `docs/KARARLAR.md` K25.
+**✅ DOĞRULANDI (2026-10-12, K30-K32):** FUSE mount artık gerçek
+kullanımda çalışıyor. Yol boyunca üç ayrı gerçek hata daha bulunup
+düzeltildi:
+- **K30** — `host.Dispose()` hiç çağrılmıyordu, mount uygulama
+  kapanınca temizlenmiyordu (zombi mount). Hem CLI hem GUI çıkış
+  yollarına eklendi, log'da "Disposing VirtualDriveService..." ilk kez
+  görüldü.
+- **K31** — upstream kütüphane (LTRData.FuseDotNet) Linux'ta BSD bit
+  değerlerini kullanıyordu, bu yüzden `cat` dışında hiçbir gerçek
+  uygulama (Dolphin dahil) mount edilmiş dosyayı açamıyordu. Linux'a
+  özgü doğru bit sabitleriyle özel bir flag çevirisi yazıldı.
+- **K32** — Dolphin kısayolu yanlış XDG yoluna (`~/.config` yerine
+  `~/.local/share`) yazılıyordu, hiç görünmüyordu. Düzeltildi, operatör
+  ekran görüntüsüyle doğruladı.
 
-**Kim:** Claude Code (F02 düzeltmesi + uygulama), **operatör** (makinenin
-başında Google'ı yeniden bağlayıp canlı doğrulama — tek yapabilen o).
+Operatör Dolphin üzerinden gerçek Google Drive dosyalarını (ekran
+görüntüsüyle kanıtlı) görüp erişti. **Hâlâ açık:** F02'nin (Google Docs
+export) mount üzerinden spesifik olarak bir native Google Docs/Sheets
+dosyası açılarak uçtan uca doğrulanması yapılmadı — yalnız indirme
+servisi kod seviyesinde düzeltildi ve genel dosya erişimi doğrulandı.
+
+**Kim:** Claude Code (K30-K32 düzeltmeleri), **operatör** (Dolphin
+üzerinden canlı doğrulama — tamamlandı); native Google Docs dosyası
+testi hâlâ bekliyor.
 
 ---
 
-## FAZ 9 — Token yenileme ve OAuth kapsam eksikleri 🟡 UYGULANDI, DOĞRULAMA BEKLİYOR
+## FAZ 9 — Token yenileme ve OAuth kapsam eksikleri ✅ DOĞRULANDI (K33)
 
 **Sorun 1 — Microsoft token yenileme başarısız:** Her çağrı ayrı,
 bellek-içi bir MSAL nesnesi üretiyordu, `AcquireTokenSilent` önceki
@@ -158,10 +175,27 @@ dahil tam Gmail erişimi kullanıyor.
 `https://mail.google.com/` (tam erişim, kalıcı silme dahil her
 operasyonu kapsıyor) eklendi.
 
-**⚠️ DOĞRULAMA EKSİK (ikisi de):** Hiçbiri gerçek interaktif girişle
-canlı test edilmedi — operatörün tarayıcıda onay vermesi gerekiyor.
-Ayrıntı ve sonraki adım (tek oturumda hem Google hem Microsoft'u
-yeniden bağlama sırası): `docs/KARARLAR.md` K26.
+**✅ DOĞRULANDI (K28-K29, K33):** Operatör Google Cloud Console'da Gmail
+API'yi etkinleştirdi; Microsoft'un `FindAsync` composite-key hatası
+(K29) düzeltildi. Gerçek `sync-all` koşumu (2026-10-12):
+```
+Google:    15 e-posta
+Microsoft: 11 e-posta
+Yandex:     2 e-posta
+```
+Üç sağlayıcının da e-posta senkronu artık gerçek veriyle çalışıyor —
+projenin tarihinde ilk kez. Ayrıca K33'te Yandex IMAP için yanlış SASL
+mekanizması (`SaslMechanismOAuthBearer` yerine `SaslMechanismOAuth2`
+gerekiyordu) bulunup düzeltildi, ve K22'den beri açık olan "hesap
+çoğalıyor" bulmacası kök sebebiyle çözüldü (bkz. FAZ 12 E01 — artık
+kapandı).
+
+**🟡 Bilinçli sınır (çözülmedi):** Yandex Calendar (CalDAV) hâlâ 401
+veriyor. Yandex'in "Authorization apps" izin grupları en fazla 3 ile
+sınırlı; Mail eklenirken kullanılmayan Direct kaldırıldı ama Calendar
+için Login(ID) veya Disk'ten birinin feda edilmesi gerekir — ikisi de
+gerçekten kullanılıyor. Operatöre sorulmadan, düşük öncelikli, bilinen
+bir platform sınırı olarak bırakıldı.
 
 **🟡 Düzeltme (D02, dış inceleme + araştırma — 2026-10-12):** K26'da
 ve `docs/PROJE-REHBERI.md`'de "Secret Service yoksa MSAL kendisi düz
@@ -236,11 +270,16 @@ makul bulundu, değiştirilmedi:
 
 ### FAZ 12 — Eşzamanlılık, kimlik ve senkronizasyon sertleştirmesi (E01-E05)
 
-1. **E01 — Hesap tekilleştirme veritabanında garanti edilmeli:** K22'de
-   bulunan "aynı hesap iki kez kayıtlı" sorununun kök sebebi hâlâ
-   bilinmiyor. Öneri: sağlayıcı + sabit kimlik (e-posta, Microsoft'ta
-   tenant/home-account ayrımına dikkat) üzerinde UNIQUE kısıt +
-   transaction içinde upsert.
+1. **✅ E01 — Hesap tekilleştirme — KAPANDI (K33, 2026-10-12):** K22'nin
+   kök sebebi bulundu: `SaveAccountAsync` yalnız `AccountId`'ye
+   bakıyordu, her interaktif auth çağrısı yeni bir Guid ürettiği için
+   aynı hesap yeniden bağlanınca hep yeni satır ekleniyordu. Artık
+   Provider+Email (iş anahtarı) ile aranıyor, AccountId değiştirilmiyor.
+   Kanıt: iki kopya Yandex satırı `remove-account` ile temizlendi,
+   sonraki `sync-all` tutarlı tek sonuç verdi. **Hâlâ açık (düşük
+   öncelik):** veritabanı seviyesinde UNIQUE kısıt yok — uygulama
+   katmanındaki upsert mantığı tek koruma; gelecekte doğrudan SQL ile
+   satır eklenirse yine çoğalabilir.
 2. **E02 — Scope/DbContext ömürleri denetlenmeli:** Singleton servisler
    (K22) ile Transient/Scoped servisler bir arada kullanılıyor,
    bağımlılık grafiği hiç çıkarılmadı.
@@ -304,16 +343,29 @@ başından beri e-posta/takvim senkronunu gerçek veriyle HİÇ
 çalıştırmıyordu (composite-key hatası, 4 canlı yerde). Düzeltildi —
 Microsoft'ta ilk kez gerçek e-posta senkronu çalıştı (10 e-posta).
 
-**Operatör makinenin başına geçince, kalan açık işler:**
-1. **Gmail:** Google Cloud Console'da Gmail API'yi etkinleştir
-   (API Library → Gmail API → Enable) — kod sorunu değil, proje
-   seviyesinde API açılmamış.
-2. **Yandex Mail/Calendar:** Yandex OAuth uygulamasının panelinde
-   (oauth.yandex.com) Mail ve Calendar izin gruplarını ekle (şu an
-   yalnız Disk işaretli — K29'da not edildi, bu benim eksik kurulum
-   rehberliğimdi), sonra `auth-yandex`'i tekrar çalıştır.
-3. `mount <accountId>` ile hem bir PDF'e hem bir Google Doc'a eriş
-   (F02 düzeltmesi test edilsin), içeriğin indiğini doğrula.
-4. Hepsi tamamsa sıradaki FAZ 11 (güvenlik/veri bütünlüğü
-   sertleştirmesi) ele alınır.
+**✅ Operatör ve Claude birlikte devam etti (K30-K33) — hepsi canlı
+kanıtla kapandı:**
+1. ✅ Gmail API etkinleştirildi, Google e-posta senkronu çalışıyor
+   (15 e-posta).
+2. ✅ Yandex Mail izni eklendi (Direct kaldırılarak, 3-grup sınırı
+   içinde yer açıldı), Yandex SASL mekanizması düzeltildi (K33),
+   e-posta senkronu çalışıyor (2 e-posta). Yandex Calendar bilinçli
+   olarak bilinen bir platform sınırı olarak bırakıldı (yukarıda FAZ 9).
+3. ✅ Mount gerçek kullanımda test edildi — Dolphin üzerinden gerçek
+   dosyalara erişildi (K30-K32 ile 3 ayrı gerçek hata bulunup
+   düzeltildi: zombi mount, yanlış Linux flag değerleri, yanlış Dolphin
+   kısayol yolu).
+4. ✅ K22'nin çözülmemiş hesap-çoğalma bulmacası kök sebebiyle kapandı
+   (K33, FAZ 12 E01).
+
+**Hâlâ açık, belirlenmiş bir sonraki adım yok:**
+- Native bir Google Docs/Sheets dosyasının mount üzerinden spesifik
+  olarak açılıp F02 düzeltmesinin uçtan uca doğrulanması (yukarıda
+  FAZ 8).
+- FAZ 11 (güvenlik/veri bütünlüğü sertleştirmesi, G01-G05) — henüz
+  başlanmadı, K28'in DB şifreleme düzeltmesiyle G01'in bir kısmı
+  örtüşüyor ama resmi olarak ele alınmadı.
+- FAZ 12'nin kalan maddeleri (E02-E05) — henüz başlanmadı.
+
+Bu üç madde, bir sonraki oturumun aday başlangıç noktası.
 
