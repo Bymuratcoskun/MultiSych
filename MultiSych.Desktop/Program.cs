@@ -305,8 +305,25 @@ internal static class Program
             {
                 CopilotApiKey = Environment.GetEnvironmentVariable("COPILOT_API_KEY") ?? string.Empty,
                 GeminiApiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY") ?? string.Empty,
-                YandexAiApiKey = Environment.GetEnvironmentVariable("YANDEX_AI_API_KEY") ?? string.Empty,
+                // SettingsViewModel.SaveSettingsAsync "YANDEX_API_KEY" adıyla .env'e yazıyordu,
+                // burada "YANDEX_AI_API_KEY" okunuyordu — isim uyuşmazlığı yüzünden Ayarlar'dan
+                // kaydedilen Yandex AI anahtarı bir sonraki açılışta hiç yüklenmiyordu
+                // (K28, dış incelemenin E05 bulgusunu araştırırken bulundu, 2026-10-12).
+                YandexAiApiKey = Environment.GetEnvironmentVariable("YANDEX_API_KEY") ?? string.Empty,
                 YandexFolderId = Environment.GetEnvironmentVariable("YANDEX_FOLDER_ID") ?? string.Empty
+            },
+            // Sync bloğu önceden HİÇ atanmıyordu — appConfig.Sync her zaman null kalıyor,
+            // bu yüzden RuntimeSyncSettings her açılışta sabit 15 dakikaya dönüyordu.
+            // Ayarlar ekranından değiştirilen senkron aralığı .env'e YAZILIYORDU
+            // (MULTISYCH_SYNC_INTERVAL) ama hiçbir zaman geri OKUNMUYORDU — kullanıcı
+            // ayarı kaydettiğini sanıyordu, her yeniden başlatmada sessizce kayboluyordu
+            // (K28, aynı bulgu).
+            Sync = new SyncSettings
+            {
+                SyncIntervalMinutes = int.TryParse(Environment.GetEnvironmentVariable("MULTISYCH_SYNC_INTERVAL"), out var syncInterval) && syncInterval > 0
+                    ? syncInterval
+                    : 15,
+                AutoSyncEnabled = !string.Equals(Environment.GetEnvironmentVariable("MULTISYCH_AUTO_SYNC"), "false", StringComparison.OrdinalIgnoreCase)
             },
             Security = new SecuritySettings
             {

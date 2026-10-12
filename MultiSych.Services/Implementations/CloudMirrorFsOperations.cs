@@ -70,16 +70,39 @@ internal sealed class CloudMirrorFsOperations(
             return;
         }
 
+        // Atomik indirme (K27/FAZ 11 G02, dış inceleme): doğrudan hedef dosyaya
+        // yazmak yerine önce AYNI dizinde geçici bir dosyaya yazılır, sonra tek
+        // bir rename ile hedefin üzerine taşınır. Bağlantı kesilirse / süreç
+        // çökerse hedef dosya ya ESKİ hâliyle (tam) ya hiç değişmemiş kalır —
+        // "yarım indirme tamamlanmış gibi görünür" riski ortadan kalkar. Geçici
+        // dosya aynı dizinde olduğu için rename aynı dosya sisteminde ve atomik.
+        var tempPath = localPath + ".multisych-indiriliyor-" + Guid.NewGuid().ToString("N");
         try
         {
             _logger.Information("FUSE lazy-download: fetching real content for {Path} ({Size} bytes)", relativePath, fileEntity.FileSize);
             using var remoteStream = await storageService.DownloadFileAsync(credentials, fileEntity.FileId);
-            await using var localStream = File.Open(localPath, FileMode.Create, FileAccess.Write, FileShare.None);
-            await remoteStream.CopyToAsync(localStream);
+            long downloadedBytes;
+            await using (var tempStream = File.Open(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                await remoteStream.CopyToAsync(tempStream);
+                downloadedBytes = tempStream.Length;
+            }
+
+            if (downloadedBytes != fileEntity.FileSize)
+            {
+                // DB'deki boyut bazı durumlarda (ör. native Google Docs export)
+                // yalnız bir tahmin olabilir (bkz. docs/KARARLAR.md K27) — tutmazsa
+                // indirmeyi reddetmiyoruz, yalnız logluyoruz. 0 bayt ise (gerçek
+                // bir boş yanıt) yine de kabul ediyoruz, ama bariz görünsün diye ayrı not.
+                _logger.Information("FUSE lazy-download: {Path} için indirilen boyut ({Downloaded}) DB'deki beklenen boyuttan ({Expected}) farklı — kabul edildi, DB tahmini olabilir.", relativePath, downloadedBytes, fileEntity.FileSize);
+            }
+
+            File.Move(tempPath, localPath, overwrite: true);
         }
         catch (Exception ex)
         {
             _logger.Warning(ex, "FUSE lazy-download failed for {Path}; serving placeholder content.", relativePath);
+            try { File.Delete(tempPath); } catch { /* geçici dosya zaten yoksa ya da silinemiyorsa önemli değil */ }
         }
     }
 

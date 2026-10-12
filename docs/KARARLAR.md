@@ -1117,3 +1117,95 @@ edilebilir bulundu.
 gel" ya da tam tersi "dış inceleme ne derse doğrudur" tutumlarının
 ikisi de — bu oturum ikisinin de yanlış olduğunu, her iddianın kendi
 başına doğrulanması gerektiğini gösterdi.
+
+---
+
+## K28 — 🔴 KRİTİK: VERİTABANI HİÇ ŞİFRELENMEMİŞTİ, ÜÇ KONFİGÜRASYON KOPUKLUĞU DAHA BULUNDU VE DÜZELTİLDİ · 2026-10-12
+
+**Bağlam:** Dış incelemenin E05 bulgusunu ("yapılandırma tek kaynaktan
+gelmeli, kod varsayılanı 15 dk / `.env.example` 30 dk yazıyor")
+araştırırken, çok daha ciddi bir kopukluk zinciri ortaya çıktı.
+
+**🔴 EN KRİTİK BULGU — veritabanı şifrelemesi fiilen hiç çalışmıyordu:**
+`CreateConfiguration()` (`Program.cs`) `MULTISYCH_ENCRYPT_STORAGE` ve
+`MULTISYCH_STORAGE_PASSWORD` env değişkenlerini okuyor. Operatörün
+gerçek `.env` dosyasında bunlar **yanlış isimlerle** duruyordu:
+`ENCRYPT_STORAGE=true` ve `STORAGE_PASSWORD=<değer>` — ikisi de kod
+tarafından hiç görülmüyordu, `EncryptStorage` sessizce `false`'a
+düşüyordu. **Sonuç: README'nin "SQLCipher + AES-256 ile tamamen
+kilitli" dediği yerel veritabanı (Google/Microsoft/Yandex token'ları
+dahil) muhtemelen bu projenin en başından beri düz metin olarak
+diskte duruyordu.** Operatör `true` yazmasına rağmen.
+
+**Doğrulama (iddia değil, ölçüldü):**
+```
+Düzeltmeden önce: file ~/.config/MultiSych/multisych.db
+  → "SQLite 3.x database, last written using SQLite version 3039002..."
+  (düz metin, şifresiz — herhangi bir SQLite aracıyla parolasız açılabilir)
+
+Düzeltmeden sonra (yeni DB): file ~/.config/MultiSych/multisych.db
+  → "data" (tanınamayan ikili — SQLCipher'ın beklenen imzası)
+```
+
+**Operatöre soruldu, karar:** "Hemen şifrelemeyi de aç, gerekirse DB'yi
+sıfırla." Onaylandı ve uygulandı.
+
+**Uygulanan düzeltme:**
+1. `.env`'deki değerler (içerikleri HİÇ okunmadan/basılmadan, yalnızca
+   anahtar adları değiştirilerek) doğru isimlere taşındı:
+   `STORAGE_PASSWORD`→`MULTISYCH_STORAGE_PASSWORD`,
+   `ENCRYPT_STORAGE=true`→`MULTISYCH_ENCRYPT_STORAGE=true`. Taşımadan
+   önce `.env`'in zaman damgalı bir yedeği alındı.
+2. Eski, şifresiz `multisych.db` **silinmedi**, `multisych.db.sifresiz-k28-yedek-<zaman>`
+   adıyla kenara taşındı (geri alınabilir çare — `~/.claude/CLAUDE.md`
+   §5). Uygulama yeniden başlatılınca yeni, gerçekten şifreli bir DB
+   oluşturdu (migration'lar sıfırdan uygulandı).
+3. **Sonuç olarak yerel önbellek (hesaplar, e-posta/takvim/dosya metadata)
+   sıfırlandı** — operatörün zaten planlanan K25/K26 doğrulaması için
+   üç hesabı yeniden bağlaması gerekiyordu, ek kayıp bu kapsamda.
+   `.env`'deki gerçek OAuth client ID/secret'lar DOKUNULMADI, kaybolmadı.
+
+**Ek bulgu 1 — Yandex AI anahtarı da aynı kopukluğa sahipti:**
+`SettingsViewModel.SaveSettingsAsync`, Ayarlar ekranından kaydedilen
+Yandex AI anahtarını `.env`'e `YANDEX_API_KEY` adıyla yazıyordu;
+`CreateConfiguration()` ise `YANDEX_AI_API_KEY` okuyordu. Kullanıcı
+Ayarlar'dan anahtarı kaydetse bile bir sonraki açılışta hiç
+yüklenmiyordu. **Düzeltme:** `CreateConfiguration()` artık
+`YANDEX_API_KEY` okuyor (yazma tarafı değiştirilmedi, daha az
+yıkıcı — kullanıcı arayüzünün zaten yazdığı isme uyuldu).
+
+**Ek bulgu 2 — senkron aralığı/otomatik senkron ayarları hiç
+okunmuyordu (E05'in asıl kök sebebi):** `MultiSychConfig.Sync`
+(`SyncIntervalMinutes`, `AutoSyncEnabled`) `CreateConfiguration()`'da
+**hiçbir zaman atanmıyordu** — her zaman `null` kalıyor, kod sessizce
+sabit 15 dakika/true'ya düşüyordu. Ayarlar ekranından değiştirilen
+senkron aralığı `.env`'e `MULTISYCH_SYNC_INTERVAL`/`MULTISYCH_AUTO_SYNC`
+olarak yazılıyordu ama hiçbir zaman geri okunmuyordu — kullanıcı
+ayarı kaydettiğini sanıyordu, her yeniden başlatmada sessizce
+kayboluyordu. **Düzeltme:** `CreateConfiguration()`'a eksik `Sync`
+bloğu eklendi, iki değişken de doğru okunuyor.
+
+**Ek bulgu 3 — `.env.example`'ın yarısı tamamen hayaliydi:**
+`DATABASE_PATH`, `LOG_LEVEL`, `ENABLE_SYNC_ON_STARTUP` — üçü de kod
+tarafından **hiçbir yerde okunmuyor**. K21'de bulunan
+`GOOGLE_REDIRECT_URI` deseninin aynısı, üç kat daha geniş kapsamda.
+**Düzeltme:** `.env.example` gerçek, çalışan değişken adlarıyla
+yeniden yazıldı, çalışmayan üç satır açık bir notla işaretlenip
+kaldırıldı.
+
+**Kanıt:** `dotnet build` 0 hata, `tools/kapilar` 8/8 yeşil, 81 test
+regresyonsuz. Gerçek uygulama koşumu: yeni DB oluşturuldu, migration'lar
+uygulandı, `list-accounts` temiz çalıştı ("No accounts have been saved
+yet." — beklenen, DB sıfırlandığı için).
+
+**Ders (ekip kuralına eklenecek):** Bir ayarın ".env'e yazıldığını
+görmek" ile "kod tarafından okunduğunu doğrulamak" FARKLI şeyler —
+bu projede ikinci kez (K21'den sonra) aynı kalıp bulundu: UI/dosya
+yazma tarafı çalışıyor GİBİ görünüyordu, okuma tarafı sessizce
+kopuktu. Her yeni `.env` değişkeni eklendiğinde, hem YAZAN hem OKUYAN
+tarafın AYNI isimle eşleştiği grep ile doğrulanmalı.
+
+**Bu kararın imkânsız kıldığı:** "Veritabanı şifreli" iddiasının
+artık `.env`'deki bir satırın varlığına değil, gerçek dosya
+imzasının ölçülmesine dayanması — bir daha "true yazdım, çalışıyor
+sanıyordum" durumu sessizce yaşanmayacak.
