@@ -130,6 +130,20 @@ yükleme, yanlış klasör temizleme, sessizce 0 bayt dosya yazma, yanıltıcı
 - Microsoft için kalıcı MSAL token önbelleği + Gmail OAuth kapsamı
   eklendi (K26) — **doğrulama bekliyor**
 
+### Dönem 6 — Dış inceleme işlendi, gerçek bir hata bulunup düzeltildi (2026-10-12)
+Operatör bu rehberi dış bir modele (Perplexity) inceletti. Üç en somut
+iddia kodda bizzat doğrulandı (K27):
+- **Google Docs/Sheets/Slides indirme hatası düzeltildi** — native
+  Google formatları `Files.Export()` yerine `Files.Get()` ile
+  indirilmeye çalışılıyordu, Drive API bunu hiç desteklemiyor. Gerçek
+  test hesabında 6 dosyadan 3'ü bu formattaydı. **Gerçek, kanıtlanmış
+  bir hataydı, düzeltildi.**
+- Bu rehberin iki cümlesi (§6.2 MSAL fallback davranışı, §6.3 "akışlı
+  indirme") yanlış çıktı, düzeltildi (aşağıda, aynı yerde).
+- Kalan 20+ dış inceleme maddesi `docs/YOL-HARITASI.md`'ye FAZ 11-13
+  olarak işlendi (güvenlik/veri bütünlüğü, eşzamanlılık/kimlik, test/
+  dağıtım sertleştirmesi).
+
 ---
 
 ## 4. Şu an yapılacaklar (açık işler, öncelik sırasıyla)
@@ -147,24 +161,34 @@ bu yüzden yalnız operatör yapabilir. Adımlar:
    diske kalıcı olarak kaydedilecek)
 3. `... -- sync-all` — Microsoft için "Token refreshed" mi yoksa hâlâ
    "FAILED" mi görünüyor, gerçek sonucu gör
-4. `... -- mount <accountId>` ile gerçek bir dosyaya eriş (örn.
-   `~/MultiSych_Drives/<rastgele-klasör>/RiskRaporu.pdf`), dosyanın
+4. `... -- mount <accountId>` ile hem bir PDF'e (örn. `RiskRaporu.pdf`)
+   **hem bir Google Doc'a** (örn. "Adsız doküman" — K27'nin düzelttiği
+   export hatası da bu testle doğrulanmış olur) eriş, dosyaların
    artık gerçekten indiğini (0 bayt değil) doğrula
 
-### 4.2 — FAZ 10: AI asistan entegrasyonu (hiç başlamadı)
+### 4.2 — FAZ 11-13: Dış incelemenin kabul edilen maddeleri (yeni, henüz başlanmadı)
+2026-10-12'de bir dış inceleme (Perplexity) işlendi, 20+ makul
+mühendislik/süreç önerisi `docs/YOL-HARITASI.md`'ye üç yeni faz olarak
+eklendi: FAZ 11 (güvenlik/veri bütünlüğü sertleştirmesi — token yaşam
+döngüsü, atomik indirme, mount yazma sözleşmesi), FAZ 12 (eşzamanlılık/
+kimlik — hesap tekilleştirme, DbContext ömürleri, sync koordinasyonu),
+FAZ 13 (test/dağıtım iyileştirmeleri). FAZ 11-12 FAZ 10'dan (AI) önce
+ele alınacak — dış incelemenin kendi önceliklendirmesi de böyle.
+
+### 4.3 — FAZ 10: AI asistan entegrasyonu (hiç başlamadı)
 Sol menüdeki Copilot/Gemini/Yandex AI butonlarının gerçekte ne
 yaptığı bu denetimde hiç ölçülmedi. İlk adım: butona tıklanınca ne
 oluyor, hata mı veriyor sessiz mi kalıyor — önce bunu gözle/logla ölç,
 sonra API anahtarı akışını tasarla.
 
-### 4.3 — FAZ 7 (eski numaralandırmayla): Paketleme hiç denenmedi
+### 4.4 — FAZ 7 (eski numaralandırmayla): Paketleme hiç denenmedi
 `build-deb-package.sh`, `Dockerfile`, `PKGBUILD` dosyaları var ama
 hiçbirinin gerçek bir paket üretip çalıştırdığı bu depoda kayıtlı
 değil. Düşük öncelikli (günlük kullanım `dotnet run` ile engelsiz
 çalışıyor) ama bir gün başka bir makineye/kullanıcıya dağıtılacaksa
 mutlaka denenmeli.
 
-### 4.4 — Küçük, düşük öncelikli artıklar
+### 4.5 — Küçük, düşük öncelikli artıklar
 - `docs/smoke-checklist.md` güncellenmedi, eski FAZ numaralarına göre.
 - `GirCore1007` derleyici uyarısı hâlâ bastırılıyor (paket 0.8.0'da
   sabit) — her büyük iş paketinden önce yeni sürüm notlarına bakılması
@@ -209,24 +233,36 @@ hesapların bu kısıtlamadan muaf olup olmadığını ayrıca kontrol etmek
 (henüz ölçülmedi).
 
 ### 6.2 — MSAL'in Linux anahtarlık (keyring) bağımlılığı kırılgan
-Microsoft'un kalıcı token önbelleği (K26), Secret Service (D-Bus
-`org.freedesktop.secrets`) çalışıyorsa şifreli saklıyor. Bu makinede
-KDE'nin `ksecretd`'i çalıştığı için sorun yok, ama **farklı bir Linux
-masaüstü ortamında (örn. minimal bir pencere yöneticisi, headless
-sunucu) Secret Service hiç bulunmayabilir** — MSAL o durumda kendiliğinden
-düz dosyaya düşüyor ve yalnız log'a uyarı yazıyor, kullanıcıya hiçbir
-şey söylemiyor. İleride "token'lar neden şifresiz duruyor" sorusu
-çıkarsa kök sebep bu olabilir.
+**Düzeltme (2026-10-12, K27 — dış inceleme D02'nin ortaya çıkardığı
+kendi belge yanlışımız):** Bu bölüm önceden "Secret Service yoksa MSAL
+kendiliğinden düz dosyaya düşüp yalnız log'a uyarı yazar" diyordu —
+bu YANLIŞTI. Araştırıldı: `WithUnprotectedFile()` açıkça
+çağrılmadıysa, `MsalCacheHelper.CreateAsync` Secret Service yokken
+muhtemelen **exception fırlatıyor**, sessizce düz dosyaya düşmüyor.
+Kendi kodumuzda bu çağrı hiç yapılmadı ve zaten `try/catch` içinde —
+yani gerçek davranış muhtemelen "bellek-içi önbelleğe geri dön"
+(K23'ün orijinal sorunu sürer, ama hiç sır diske yazılmaz). Bu,
+önceden yazılandan **daha güvenli ama farklı** bir davranış. **Henüz
+Secret Service'siz bir ortamda bizzat ölçülmedi** (bu makinede Secret
+Service var) — kesin doğrulama hâlâ açık iş (`docs/YOL-HARITASI.md`
+FAZ 9).
 
 ### 6.3 — FUSE mount büyük dosyalarda performans/bellek sorunu yaşayabilir
-Şu anki lazy-download mantığı (K25) bir dosya açıldığında **tüm
-içeriği tek seferde** indirip yerel diske yazıyor (`CopyToAsync`,
-akışlı ama tam dosya bekliyor). Birkaç GB'lık bir video/arşiv dosyası
-açılırsa: (a) kullanıcı dosya gerçekten erişilebilir olana kadar uzun
-süre bekler, (b) FUSE `Open()` çağrısı bu süre boyunca bloklanır —
-ölçülmedi, ama büyük dosyalarla gerçek kullanımda fark edilecektir.
-Gerçek çözüm (parçalı/stream okuma, `Read()`'de ihtiyaç duyulan
-baytları anlık indirme) ayrı, daha büyük bir mühendislik işi.
+**Düzeltme (2026-10-12, K27 — dış inceleme D04'ün bulduğu gerçek belge
+yanlışı):** Bu bölüm önceden indirmenin "akışlı" olduğunu ima
+ediyordu — bu da YANLIŞTI. Kod tekrar okundu: `IStorageService.DownloadFileAsync`'in
+üç sağlayıcı implementasyonu da (Google/Microsoft/Yandex) dosyayı önce
+TAMAMEN bir `MemoryStream`'e okuyor, SONRA `CloudMirrorFsOperations`
+onu diske yazıyor. Yani büyük bir dosya gerçekten tüm boyutuyla
+bellekte tutuluyor — iki kat (indirme sırasında bellekte + yazma
+sırasında diske). Birkaç GB'lık bir video/arşiv dosyası açılırsa: (a)
+kullanıcı dosya gerçekten erişilebilir olana kadar uzun süre bekler,
+(b) FUSE `Open()` çağrısı bu süre boyunca bloklanır, (c) bellek kullanımı
+dosya boyutuyla doğru orantılı büyür — hiçbiri ölçülmedi ama büyük
+dosyalarla gerçek kullanımda kesinlikle fark edilecektir. Gerçek çözüm
+(parçalı/byte-range indirme, `Read()`'de ihtiyaç duyulan baytları
+anlık indirme) ayrı, daha büyük bir mühendislik işi —
+`docs/YOL-HARITASI.md` FAZ 13'e eklendi.
 
 ### 6.4 — Çift hesap kaydı tekrarlanabilir (kök sebep bilinmiyor)
 K22'de bir Google hesabının veritabanında iki kez (iki farklı

@@ -469,6 +469,20 @@ namespace MultiSych.Services.Implementations
             return baseStream;
         }
 
+        // Google'ın native Workspace formatlarını (Docs/Sheets/Slides/Drawing) gerçek
+        // bir ikili dosyaya eşleyen export hedefleri. Bu formatlar "application/
+        // vnd.google-apps.*" MIME tipiyle gelir ve Drive API'nin files.get/alt=media
+        // yolu BUNLARI HİÇ VERMEZ — yalnız files.export çalışır (K-bulgusu, dış
+        // inceleme F02, 2026-10-12: gerçek test hesabında 6 dosyadan 3'ü bu formattaydı,
+        // önceki kod bunları sessizce boş placeholder olarak bırakıyordu).
+        private static readonly System.Collections.Generic.Dictionary<string, string> GoogleNativeExportMimeTypes = new()
+        {
+            ["application/vnd.google-apps.document"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ["application/vnd.google-apps.spreadsheet"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ["application/vnd.google-apps.presentation"] = "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            ["application/vnd.google-apps.drawing"] = "application/pdf",
+        };
+
         private async Task<Stream> DownloadFromGoogleDriveAsync(AccountCredentials credentials, string fileId)
         {
             var credential = GoogleCredential.FromAccessToken(credentials.AccessToken);
@@ -478,9 +492,23 @@ namespace MultiSych.Services.Implementations
                 ApplicationName = "MultiSych"
             });
 
-            var request = service.Files.Get(fileId);
+            var metadataRequest = service.Files.Get(fileId);
+            metadataRequest.Fields = "mimeType";
+            var metadata = await metadataRequest.ExecuteAsync();
+
             var stream = new MemoryStream();
-            var response = await request.DownloadAsync(stream);
+            Google.Apis.Download.IDownloadProgress response;
+
+            if (metadata.MimeType != null && GoogleNativeExportMimeTypes.TryGetValue(metadata.MimeType, out var exportMimeType))
+            {
+                var exportRequest = service.Files.Export(fileId, exportMimeType);
+                response = await exportRequest.DownloadAsync(stream);
+            }
+            else
+            {
+                var downloadRequest = service.Files.Get(fileId);
+                response = await downloadRequest.DownloadAsync(stream);
+            }
 
             if (response.Status == Google.Apis.Download.DownloadStatus.Failed)
             {

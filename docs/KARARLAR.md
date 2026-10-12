@@ -1041,3 +1041,79 @@ yenilemenin gerçekten başarılı olduğunu gör.
 **Bu kararların imkânsız kıldığı:** Bu iki değişikliği "bitti" diye
 rapor etmek — ikisi de yalnızca "uygulandı, derleniyor" aşamasında,
 "çalışıyor" iddiası canlı kanıt gelene kadar atılmayacak.
+
+---
+
+## K27 — DIŞ İNCELEME (PERPLEXITY) İŞLENDİ: GOOGLE DOCS EXPORT HATASI DÜZELTİLDİ, İKİ BELGE YANLIŞI DÜZELTİLDİ · 2026-10-12
+
+**Bağlam:** Operatör `docs/PROJE-REHBERI.md`'yi dış bir modele
+(Perplexity) inceletip 13 sayfalık bir bulgu listesi getirdi. Claude
+Code, en somut üç iddiayı (F02, D04, D02) kodda bizzat doğruladı —
+"rapor haklı mı" sorusuna körlemesine "evet" ya da "hayır" demek yerine
+ölçüldü.
+
+**F02 — GERÇEK, KANITLANMIŞ HATA (düzeltildi):** `DownloadFromGoogleDriveAsync`,
+native Google Workspace formatlarını (`application/vnd.google-apps.document`
+vb.) `Files.Get().DownloadAsync()` ile indirmeye çalışıyordu — Google
+Drive API bu formatları bu yolla hiç vermiyor, `Files.Export()`
+gerektiriyor. **Gerçek test hesabında doğrulandı:** Google'daki 6
+dosyadan 3'ü (`application/vnd.google-apps.document`, ikisi "Adsız
+doküman") tam bu formattaydı — bu dosyalar FAZ 8'in mount'u üzerinden
+açılsaydı `try/catch` hatayı yutup sessizce boş placeholder bırakırdı.
+
+**Düzeltme:** `DownloadFromGoogleDriveAsync` artık önce dosyanın
+`mimeType`'ını (hafif bir metadata çağrısıyla, `Fields = "mimeType"`)
+kontrol ediyor; native Google formatıysa `Files.Export()` ile uygun
+bir ikili formata (`document`→docx, `spreadsheet`→xlsx,
+`presentation`→pptx, `drawing`→pdf) dönüştürüp indiriyor, değilse
+eskisi gibi doğrudan indiriyor. `dotnet build` 0 hata, `tools/kapilar`
+8/8 yeşil, mevcut 81 test regresyonsuz geçti.
+
+**⚠️ Bilinen, bilinçli bırakılan sınır (fix'in kapsamı dışı):**
+Veritabanındaki `CloudFiles.FileSize`, native Google Docs için Google'ın
+kendi raporladığı bir tahmin — export edilen gerçek ikili dosyanın
+boyutuyla birebir eşleşmeyebilir. FAZ 8'in `EnsureRealContentDownloadedAsync`
+karşılaştırması (`localSize >= fileEntity.FileSize`) bu durumda
+dosyayı her `Open()`'da gereksiz yere yeniden indirebilir — veri
+bozulması değil, verimlilik sorunu. Ayrı bir iş, FAZ 13'e not düşüldü.
+
+**D04 — GERÇEK BELGE YANLIŞI (düzeltildi):** K23/K25'te ve
+`docs/PROJE-REHBERI.md`'de indirmenin "akışlı" olduğu ima edilmişti.
+Kod tekrar okundu: `DownloadFileAsync`'in üç sağlayıcı implementasyonu
+da (Google/Microsoft/Yandex) dosyayı önce TAMAMEN bir `MemoryStream`'e
+okuyor. Büyük bir dosya gerçekten tüm boyutuyla bellekte tutuluyor.
+Gerçek çözüm (parçalı/byte-range indirme) ayrı, daha büyük bir iş —
+`docs/YOL-HARITASI.md` FAZ 13'e eklendi, şimdilik yalnız doğru
+belgelendi.
+
+**D02 — KENDİ BELGE YANLIŞIMIZ, ARAŞTIRMAYLA DÜZELTİLDİ:** K26'da
+"Secret Service yoksa MSAL kendisi düz dosyaya düşüp uyarı loglar"
+denmişti. Araştırıldı (bkz. Microsoft'un resmi kılavuzu + topluluk
+kaynakları): `WithUnprotectedFile()` açıkça çağrılmadıysa,
+`MsalCacheHelper.CreateAsync` Secret Service yokken muhtemelen
+**exception fırlatıyor**, sessizce düz dosyaya düşmüyor. Kendi kodumuzda
+`WithUnprotectedFile()` hiç çağrılmadı — ve çağrı zaten `try/catch`
+içinde (`AuthenticationService.BuildMicrosoftAppAsync`), yani gerçek
+davranış muhtemelen "bellek-içi önbelleğe geri dön" (K23'ün orijinal
+sorunu sürer, ama hiç sır diske yazılmaz). **Bu, belgelenenden daha
+güvenli ama farklı bir davranış — henüz Secret Service'siz bir ortamda
+bizzat ölçülmedi** (bu makinede Secret Service var). Kesin doğrulama
+açık iş olarak kaldı (`docs/YOL-HARITASI.md` FAZ 9).
+
+**Kabul edilmeyen/kod doğrulaması gerektirmeyen kalan maddeler** (D01,
+D03, E01-E05, G01-G05, T01-T05) `docs/YOL-HARITASI.md`'ye FAZ 11-13
+olarak işlendi — makul mühendislik/süreç önerileri, dış incelemenin
+kendi P0/P1/P2 önceliklendirmesi korunarak.
+
+**Ders (ekip kuralı olarak genelleştirilebilir):** Dış bir incelemeye
+"haklı" ya da "haksız" diye tepki vermek yerine, somut/çek edilebilir
+iddiaları KODDA doğrulamak gerekiyor — bu oturumda tam da bu yapıldı:
+2 iddia gerçek hata çıktı (biri bizim, biri incelemecinin DEĞİL, kendi
+kodumuzdaki gerçek bir hataydı), 1 iddia kendi belgemizdeki bir yanlışı
+düzeltti, geri kalanı (20+ madde) kod doğrulaması gerektirmeden kabul
+edilebilir bulundu.
+
+**Bu kararın imkânsız kıldığı:** "Dış incelemeler güvenilmez, görmezden
+gel" ya da tam tersi "dış inceleme ne derse doğrudur" tutumlarının
+ikisi de — bu oturum ikisinin de yanlış olduğunu, her iddianın kendi
+başına doğrulanması gerektiğini gösterdi.
