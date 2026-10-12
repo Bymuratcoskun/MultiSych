@@ -1421,3 +1421,41 @@ araçlarla (bugün: `file`, Dolphin) tekrar test edilince ortaya çıktı.**
 yalnızca `cat`/metadata kontrolüyle kanıtlanmış sayılması — bundan
 sonra en az bir GERÇEK masaüstü uygulamasıyla (dosya yöneticisi,
 görüntüleyici) açılış denenmeden bu iddia atılmayacak.
+
+---
+
+## K32 — Dolphin "Yerler" kısayolu yanlış dosyaya yazılıyordu, hiç görünmüyordu · 2026-10-12
+
+**Bulgu:** K31 düzeltmesinden sonra operatör gerçek dosyaları terminalden
+açabildi ama Dolphin'de "Yerler" listesinde bizim eklediğimiz kısayol
+hiç yoktu — operatör yanlışlıkla KDE'nin kendi `gdrive://` entegrasyonuna
+(tamamen ayrı, kendi OAuth'u olan bir KIO modülü) tıkladı, o da kendi
+token'ının süresi dolduğu için hata verdi. İkisi birbirine karıştırıldı.
+
+**Kök sebep:** `GetDolphinPlacesFilePath()`, `Environment.SpecialFolder.
+ApplicationData`'yı kullanıyordu — bu Linux'ta `XDG_CONFIG_HOME`'a
+(`~/.config`) eşleniyor. Ama Dolphin'in gerçek "Yerler" dosyası
+`XDG_DATA_HOME`'da (`~/.local/share/user-places.xbel`). Kod
+`~/.config/user-places.xbel` diye YANLIŞ, Dolphin'in hiç okumadığı bir
+dosya oluşturuyordu — log "kısayol eklendi" diyordu (gerçekten o yanlış
+dosyaya yazıyordu, bu yüzden iddia teknik olarak "doğruydu" ama işe
+yaramıyordu), K22'den beri fark edilmemişti.
+
+**Düzeltme:** `$XDG_DATA_HOME` ortam değişkenini (varsa) ya da
+`~/.local/share` varsayılanını kullanacak şekilde düzeltildi. Yanlışlıkla
+oluşturulmuş `~/.config/user-places.xbel` silindi.
+
+**Kanıt (ekran görüntüsüyle doğrulandı):** Düzeltmeden sonra Dolphin'in
+sol "Places" panelinde gerçekten "Google Drive" girdisi çıktı,
+tıklanınca gerçek dosyalar/klasörler (RiskRaporu.pdf, Adsız doküman,
+TOTP BACKUP DATA, vb.) doğru simgelerle listelendi.
+
+`dotnet build` 0 hata, `tools/kapilar` 8/8 yeşil.
+
+**Bugünün (2026-10-12) özeti — FAZ 8 artık uçtan uca, görsel olarak
+kanıtlandı:** K25 (lazy-download) → K27 (Google Docs export) → K30
+(host dispose/mount yaşam döngüsü) → K31 (Linux flag çevirisi,
+üçüncü parti kütüphane hatası) → K32 (Dolphin kısayol yolu) — beş
+ayrı, gerçek hata, hepsi gerçek kullanımda bulunup düzeltildi. Hiçbiri
+"muhtemelen çalışır" değil, her biri ekran görüntüsü veya komut
+çıktısıyla kanıtlandı.

@@ -268,8 +268,20 @@ namespace MultiSych.Services.Implementations
         // GVfs/udisks aygıtları için otomatik olur. Bizim mount bir sembolik bağlantı
         // olduğu için burayı elle ~/.local/share/user-places.xbel'e yazarak sağlıyoruz.
         // Dolphin bu dosyayı canlı izliyor, yeniden başlatma gerekmiyor.
-        private static string GetDolphinPlacesFilePath() =>
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "user-places.xbel");
+        // K32 (gerçek kullanımda yakalandı, 2026-10-18): Environment.SpecialFolder.
+        // ApplicationData Linux'ta XDG_CONFIG_HOME'a (~/.config) eşleniyor — ama
+        // Dolphin'in "Yerler" kısayol dosyası XDG_DATA_HOME'da (~/.local/share)
+        // duruyor. Önceki kod ~/.config/user-places.xbel'e yazıyordu (Dolphin'in
+        // hiç okumadığı, yanlışlıkla oluşturulmuş bir dosya) — "eklendi" diye
+        // logluyordu ama Dolphin'de hiçbir zaman görünmüyordu.
+        private static string GetDolphinPlacesFilePath()
+        {
+            var xdgDataHome = Environment.GetEnvironmentVariable("XDG_DATA_HOME");
+            var dataHome = !string.IsNullOrWhiteSpace(xdgDataHome)
+                ? xdgDataHome
+                : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share");
+            return Path.Combine(dataHome, "user-places.xbel");
+        }
 
         private void AddDolphinBookmark(string mountPoint, string volumeLabel)
         {
