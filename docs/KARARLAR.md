@@ -1289,3 +1289,63 @@ koşumlardı.
 **Bu kararın imkânsız kıldığı:** "Senkron X kapı yeşil, demek ki
 çalışıyor" güvencesi — bu projede artık yalnız gerçek hesapla,
 gerçek veri dönene kadar hiçbir sync yolu "doğrulandı" sayılmayacak.
+
+---
+
+## K30 — 🔴 KRİTİK: UYGULAMA KAPANIRKEN MOUNT'LAR TEMİZLENMİYORDU (host.Dispose() HİÇ ÇAĞRILMIYORDU) · 2026-10-12
+
+**Bulgu (K25/K26'nın canlı doğrulaması sırasında, F02 testi için
+`mount` CLI komutu denenirken yakalandı):** `mount <accountId>` ile
+Google hesabı başarıyla mount edildi (log "Successfully mounted"
+diyordu), CLI komutu bitip süreç çıktıktan SONRA `/proc/mounts`
+kontrol edildi — mount HÂLÂ ORADAYDI ama tamamen ölüydü:
+`ls /home/bymuratcoskun/MultiSych_Drives/<id>/` → "Transport endpoint
+is not connected".
+
+**Kök sebep:** `Program.cs`'te `var host = CreateHost(...)` hiçbir
+zaman `host.Dispose()` edilmiyordu (ne `using var host`, ne açık bir
+`Dispose()` çağrısı — CLI çıkışında da, GUI penceresi kapanışında da).
+`IVirtualDriveService` (Singleton, `IDisposable`) `.NET`'in DI
+container'ı tarafından yalnız `ServiceProvider`/`host` dispose
+edildiğinde temizlenir. Host hiç dispose edilmediği için
+`VirtualDriveService.Dispose()` (tüm açık mount'ları
+`UnmountDriveAsync` ile kapatan metot) **projenin başından beri bir
+kez bile çalışmamıştı** — kod vardı, doğru görünüyordu, hiç
+tetiklenmiyordu.
+
+**Gerçek etki — ikisi de ciddi:**
+1. CLI `mount` komutu her kullanımda bir "hayalet" mount bırakıyordu
+   (işlevsiz ama `/proc/mounts`'ta görünen, elle `fusermount3 -u`
+   gerektiren bir kayıt).
+2. **Daha önemlisi, GUI'de de aynı risk var:** kullanıcı Hesaplar
+   sayfasından bir sürücüyü mount edip sonra uygulamayı kapatırsa
+   (K8'den beri bilindiği gibi pencere kapanınca TÜM host duruyor,
+   arka plan/tray modu yok), mount kernelde yetim kalıyordu — bir
+   sonraki mount denemesinde ya eski kalıntıyla çakışma ya da elle
+   temizlik gerekiyordu.
+
+**Düzeltme:** `Program.cs`'teki iki çıkış noktasına (CLI erken dönüş
+ve GUI normal kapanış) `host.StopAsync()`'ten hemen sonra
+`host.Dispose();` eklendi.
+
+**Kanıt (düzeltmeden önce/sonra, gerçek mount ile):**
+```
+Düzeltmeden önce: mount → süreç çıkar → /proc/mounts'ta hâlâ var,
+                  ama "Transport endpoint is not connected" (ölü)
+Düzeltmeden sonra: mount → log'da "Disposing VirtualDriveService.
+                  Unmounting all active drives..." → "Successfully
+                  unmounted..." → /proc/mounts'ta hiç iz yok (temiz)
+```
+`dotnet build` 0 hata, `tools/kapilar` 8/8 yeşil.
+
+**Yan etki (bilinçli, olumlu):** CLI `mount` komutu artık (doğru
+şekilde) kendi sürecinin ömrüyle sınırlı — işini bitirip hemen
+unmount ediyor. Bu, komutun "test için anlık mount" amacına zaten
+uygun; "mount'u açık bırak" için GUI'nin kendisinin (süreç canlı
+kaldığı sürece) kullanılması gerekiyor.
+
+**Bu kararın imkânsız kıldığı:** Bundan sonra hiçbir `IDisposable`
+Singleton servisin temizlik mantığı "kod var, çalışıyor sanılıyor"
+durumunda kalamaz — host'un gerçekten dispose edildiği, log
+satırıyla (`Disposing VirtualDriveService...`) her çıkışta
+doğrulanabilir.

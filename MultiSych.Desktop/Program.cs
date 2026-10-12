@@ -183,6 +183,13 @@ internal static class Program
                 if (handled)
                 {
                     host.StopAsync().GetAwaiter().GetResult();
+                    // host.Dispose() ÇAĞRILMAZSA Singleton IDisposable'lar (ör.
+                    // VirtualDriveService.Dispose — açık mount'ları kapatıyor) hiç
+                    // çalışmıyor. Bulundu: "mount" CLI komutu sonrası süreç çıkınca
+                    // FUSE mount kernelde "Transport endpoint is not connected"
+                    // durumunda yetim kalıyordu (K30, gerçek kullanımda yakalandı,
+                    // 2026-10-12).
+                    host.Dispose();
                     return 0;
                 }
             }
@@ -227,6 +234,11 @@ internal static class Program
 
             var exitCode = app.Run(args);
             host.StopAsync().GetAwaiter().GetResult();
+            // bkz. yukarıdaki CLI çıkışındaki aynı not (K30) — burası GUI penceresi
+            // kapatılırken asıl risk: kullanıcı bir sürücüyü mount etmişken
+            // uygulamayı kapatırsa, Dispose çağrılmazsa FUSE mount kernelde yetim
+            // kalır ("Transport endpoint is not connected").
+            host.Dispose();
             return exitCode;
         }
         catch (HostAbortedException)
