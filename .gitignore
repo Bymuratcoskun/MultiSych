@@ -5,6 +5,18 @@
 **/bin/
 **/obj/
 
+# makepkg'in kendi oluşturup sildiği geçici dizinler (build-package.sh,
+# derin temizlikte 364 MB ikili dosya yanlışlıkla commit edilmiş bulundu)
+/pkg/
+/src/
+
+# Avalonia XAML derleyicisinin ikili build-cache dosyaları
+**/.avalonia-build-tasks/
+
+# NoBOMSuite aracının çalışma zamanı yedek dizini (proje kaynağı değil,
+# yanlışlıkla bu repoya başka bir projenin yedeği düşmüştü)
+.nobom/
+
 # IDE / local workspace
 .idx/
 .vscode/
