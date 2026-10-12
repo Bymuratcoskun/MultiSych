@@ -1,264 +1,172 @@
-# YOL HARİTASI — MultiSych GTK4 geçişini tamamlama
+# YOL HARİTASI — MultiSych
 
-Yazan: Claude Code (baş mühendis) · 2026-09-20
+Yazan: Claude Code (baş mühendis) · İlk yazım 2026-09-20, **2026-10-12'de
+baştan ölçülerek güncellendi** (önceki hâli üç hafta eskiydi, FAZ 0-5
+tamamlanmış görünüyordu ama belge hâlâ "FAZ 1 sırada" diyordu).
 Okuyacak: operatör (Murat Coşkun) + bu depoda çalışacak her ajan
-(Claude Code, Codex, Antigravity)
+(Claude Code, Codex — Antigravity 2026-10-07'den beri görev almıyor,
+bkz. `~/.claude/CLAUDE.md` §8)
 
-Bu belge **ölçümle** yazıldı, tahminle değil. Her maddenin altında onu
-doğrulayan komut var. Ekip kuralları için `docs/KURALLAR.md`, kapı
-tanımları için `.kapilar.conf` + `tools/kapilar` bak — üçü birlikte
-okunur, biri diğerini geçersiz kılmaz.
+Bu belge **ölçümle** yazıldı, tahminle değil. Ekip kuralları için
+`docs/KURALLAR.md`, kapı tanımları için `.kapilar.conf` + `tools/kapilar`
+bak, kararların tam gerekçesi için `docs/KARARLAR.md` (K1-K24).
 
 ---
 
-## 0. ŞU AN NEREDEYİZ — 2026-09-20 denetimi, ölçülmüş
+## 0. ŞU AN NEREDEYİZ — 2026-10-12 denetimi, ölçülmüş
 
-### Bağlam
-
-Proje Avalonia/XAML'den GTK4 + libadwaita'ya (GirCore) taşınıyor.
-`ARCHITECTURE.md` diff'i bunu doğruluyor. Geçiş **kısmi** — altyapı
-(DI, servis katmanı, veri katmanı) sağlam, sunum katmanında geride
-kalmış parçalar var.
-
-### Kapı durumu (2026-09-20 akşamı, FAZ 0 sonrası — `tools/kapilar` ile ölçüldü)
+### Kapı durumu (bugün, `tools/kapilar` ile ölçüldü)
 
 ```
 KAPI                DURUM
 dotnet-sdk          ✅ yeşil
 derleme             ✅ yeşil
-test                ✅ yeşil
-guvenlik-baslangic  🔴 desen tutmadı: 'kapı yeşil'
-bildirim            🔴 desen tutmadı: 'kapı yeşil'
-erisim              🔴 desen tutmadı: 'kapı yeşil'
+test                ✅ yeşil (81/81)
+guvenlik-baslangic  ✅ yeşil
+bildirim            ✅ yeşil
+erisim              ✅ yeşil
 eksiklik            ✅ yeşil
-⛔ 7 kapının 3'ü KIRMIZI
+lokalizasyon        ✅ yeşil
+✅ 8 kapının 8'i YEŞİL
 ```
 
-FAZ 0 tamamlandı: .NET 10 SDK kuruldu, birinci-taraf paketler 9.0.0'dan
-10.0.12'ye hizalandı, `global.json` + katkıcı SDK kontrolü eklendi
-(ayrıntı: `docs/KARARLAR.md` K2-K3). Kalan 3 kırmızı FAZ 1-3'ün konusu.
+**Bugün bulunup düzeltilen kapı hatası:** `derleme` ve `test` kapıları
+İngilizce desen arıyordu (`Build succeeded`, `Passed!`) ama sistem
+locale'i Türkçe çıktı üretiyordu (`Oluşturma başarılı oldu.`,
+`Başarılı!`) — gerçek build/test BAŞARILIYDI ama kapı bunu
+göremiyordu. `.kapilar.conf`'taki iki satıra `DOTNET_CLI_UI_LANGUAGE=en`
+eklenerek locale-bağımsız hale getirildi (bkz. `docs/KARARLAR.md` K24).
+Negatif kontrol: düzeltmeden önce ölçülüp kırmızı olduğu görüldü,
+düzeltmeden sonra tekrar ölçülüp yeşile döndüğü doğrulandı.
 
-Beş kırmızının dördü **negatif kontrolle doğrulanmış**, gerçek: kapı
-yazılmadan önce eldeki bozukluk elle bulundu, kapı yazıldı, kırmızı
-çıktığı görüldü (bu belgedeki sayılar `tools/kapilar` çıktısının
-birebir kopyası). `eksiklik` kapısı bir **tavan** kapısıdır (mevcut 1
-eksik implementasyonun üstüne çıkılmasın diye), yeşil olması "sorun
-yok" değil "en azından kötüleşmedi" demek.
+### FAZ 0-5 TAMAMLANDI (bu belgenin önceki hâlinin tüm maddeleri)
 
-### Bulgular (kanıtlı, dosya + satır)
+Aşağıdaki fazlar, bu belgenin 2026-09-20 tarihli ilk sürümünde "kırmızı/
+sırada" olarak listelenmişti. Bugünkü denetimde hepsinin fiilen
+tamamlanmış olduğu `docs/KARARLAR.md`'deki karar numaralarıyla
+doğrulandı — belge güncellenmemişti, iş yapılmıştı:
 
-| # | Bulgu | Kanıt |
+| Faz | Konu | Kanıt (KARARLAR.md) |
 |---|---|---|
-| 1 | Proje `net10.0` hedefliyor, makinede yalnız .NET 8 SDK kurulu | `dotnet build` → `NETSDK1045` |
-| 2 | Başlangıç parola/2FA kontrolü GTK açılışına hiç bağlı değil | `Program.cs:148-149` kendi yorumuyla itiraf ediyor; `tools/guvenlik-baslangic-testi.sh` |
-| 3 | `LoginViewModel`/`SetupViewModel`/`AuthViewModel` DI'da yok, hiçbir View'dan referans edilmiyor | `grep -rl` boş sonuç |
-| 4 | Bildirimler no-op — asıl gönderim satırı yorumda | `WindowService.cs:111-112`; `tools/bildirim-testi.sh` |
-| 5 | 5 ViewModel DI'da kayıtlı ama `MainWindow.cs` sayfa switch'inde yok: `AIOverviewViewModel`, `CalendarViewModel`, `DocumentAnalyzerViewModel`, `DocumentsViewModel`, `ErrorReportViewModel` | `tools/erisim-testi.sh` |
-| 6 | `docs/smoke-checklist.md` "Document Analyzer" ekranını manuel test adımı sayıyor — ama madde 5 yüzünden o ekrana ulaşan bir nav yok | çapraz okuma, doğrudan çelişki |
-| 7 | Çoklu dil desteği (`en-US.axaml`/`tr-TR.axaml`) silinmiş, yerine hiçbir i18n mekanizması konmamış; metinler C#'a Türkçe gömülü | `git log`'da silinen dosyalar + `grep` ile View'larda sabit string |
-| 8 | `CloudStorageService.SearchFilesAsync` provider ayrımı olmadan doğrudan `NotImplementedException` | `CloudStorageService.cs:1152`; `tools/eksiklik-testi.sh` baseline=1 |
-| 9 | `MainWindow.axaml.cs` — 0 byte, izlenmeyen, artık dosya | `ls -la` |
-| 10 | `GirCore1007` uyarısı bilinçli bastırılmış, GirCore 0.8.0'ın kararlı subclass deseni bekleniyor | `.csproj` içi yorum, kendi kendine belgeli |
+| FAZ 0 | .NET 10 SDK + paket hizalama | K2-K3 |
+| FAZ 1 | Güvenlik başlangıç kapısı (parola/2FA) | K4, `guvenlik-baslangic` yeşil |
+| FAZ 2 | 5 erişilemeyen ViewModel bağlandı/kapatıldı | K5, `erisim` yeşil |
+| FAZ 3 | Bildirimler gerçek çalışıyor | K10, `bildirim` yeşil |
+| FAZ 4 | Çoklu dil desteği (JSON + `Loc.Get`) | K11, `lokalizasyon` yeşil |
+| FAZ 5 | `SearchFilesAsync` eksik implementasyon kapatıldı | K15, `eksiklik` yeşil |
+
+### FAZ 6 — Küçük artıklar (bugün ilerletildi)
+
+1. ✅ `MainWindow.axaml.cs` (0 bayt, izlenmeyen) — **bugün silindi**,
+   build/test/kapılar yeşil kaldığı doğrulandı.
+2. `docs/smoke-checklist.md` — henüz güncellenmedi, hâlâ açık.
+3. `GirCore1007` bastırması — **hâlâ dokunulmadı** (bilinçli, roadmap'in
+   orijinal kararı). Paket sürümü hâlâ `0.8.0`
+   (`MultiSych.Desktop.csproj`). Yeni kararlı desen yayınlanıp
+   yayınlanmadığı her büyük iş paketinden önce bir kez kontrol edilsin.
+
+### FAZ 7 — Genel regresyon ve paketleme (HÂLÂ AÇIK, hiç denenmedi)
+
+`build-deb-package.sh`, `Dockerfile`, `PKGBUILD` dosyaları var ama
+hiçbirinin uçtan uca gerçek bir paket üretip çalıştırdığı bu depoda
+kayıtlı değil. K3'te yalnız `PKGBUILD`'in self-contained/runtime
+bağımlılık çelişkisi düzeltildi, gerçek bir paketleme denemesi
+yapılmadı. **Bu projenin en eski açık işi** — ama kullanıcı şu an
+`dotnet run` ile çalışıyor, günlük kullanımı engellemiyor, bu yüzden
+düşük öncelikli.
 
 ---
 
-## 1. KİM NE YAPAR
+## 1. YENİ KAPSAM — OAuth + Gerçek FUSE Mount (K18-K23, Eylül sonu-Ekim)
 
-| İş türü | Kim | Neden |
-|---|---|---|
-| Mimari karar, iş paketi, kapı yazımı/bakımı, kabul-red | **Claude Code** | Baş mühendis, kaldıraç burada |
-| Nav bağlama, boilerplate GTK View kodu, i18n altyapı taşıması | **Codex** | Hacim işi, mekanik |
-| Çapraz tutarlılık taraması (DI ↔ View, sabit string envanteri) | **Antigravity** | Okuma hacmi — ama headless güvenilmezliği nedeniyle küçük, dosya-bazlı paketler hâlinde (`docs/KURALLAR.md` §6) |
-| Sudo gerektiren adımlar, commit/push, güvenlik kodu incelemesi | **Claude Code** (operatör onayıyla) | Geri alınabilirlik/yetki sınırı |
-| Gerçek kullanım testi (parola ekranı, bildirim, nav) | **Operatör** | Tek yetkili — "çalışıyor" iddiasının son sınavı |
+Bu belgenin ilk sürümü yalnızca GTK4 geçişinin tamamlanmasını
+kapsıyordu. O tamamlandıktan sonra proje çok daha büyük bir iş
+yaptı — gerçek bulut hesap bağlantıları ve gerçek (simüle değil)
+sanal sürücü desteği. Özet (ayrıntı `docs/KARARLAR.md` K18-K23):
 
----
+- Google, Microsoft, Yandex OAuth uçtan uca bağlı ve doğrulanmış.
+- Windows desteği tamamen kaldırıldı (K18/K20) — proje yalnız Linux
+  + macOS hedefliyor.
+- Gerçek FUSE mount (LTRData.FuseDotNet, kernel seviyesinde,
+  `/proc/mounts` ile kanıtlı) — önceki sembolik bağlantı simülasyonunun
+  yerini aldı. Kritik bir `fork()` donma hatası bulunup `-f` bayrağıyla
+  düzeltildi.
+- Google için otomatik token yenileme çalışıyor (gerçek hesapla
+  doğrulandı).
 
-## FAZ 0 — Derleme engelini kaldır 🔴 EN KRİTİK, HER ŞEYİ BLOKE EDİYOR
-
-**Sorun:** `.NET 10 SDK` kurulu değil, hiçbir kapı, hiçbir test
-koşamıyor.
-
-**Adım:**
-1. `sudo dnf install dotnet-sdk-10.0` (10.0.111, Fedora `updates`
-   deposunda hazır, 73.7 MB) — operatör onayıyla, **Claude Code
-   çalıştırır**.
-2. `dotnet --list-sdks` ile 10.x'in göründüğünü doğrula.
-3. `dotnet build MultiSych.slnx` dene — `.slnx` formatının bu SDK
-   sürümünde desteklendiğini doğrula (bu bir varsayım, ölçülmedi;
-   desteklenmiyorsa `dotnet build` her `.csproj`'a ayrı ayrı veya
-   `.sln` dönüştürmeyle çalıştırılır).
-4. `scripts/verify.sh` uçtan uca koştur (restore→build→test→publish).
-
-**Kabul ölçütü:** `tools/kapilar` çıktısında `derleme` ve `test`
-kapıları yeşil.
-
-**Kim:** Claude Code (sudo + doğrulama), operatör onayı gerekli.
+### Bu kapsamdan kalan açık işler (FAZ 8-10, aşağıda)
 
 ---
 
-## FAZ 1 — Güvenlik regresyonunu kapat 🔴 KRİTİK (sessiz güvenlik açığı)
+## FAZ 8 — Mount edilen dosyaların GERÇEK içeriği 🔴 EN YÜKSEK ÖNCELİK
 
-**Sorun:** `RequireStartupPassword` / `EnableTwoFactorAuth` ayarları
-okunuyor, hiç uygulanmıyor. Kullanıcı bu ayarları açık tutsa bile
-korumasız.
+**Sorun:** FUSE mount gerçek (kernel seviyesinde) ama içindeki dosyalar
+hâlâ 0 baytlık yer tutucu. Kullanıcı sürücüyü açıp dosyaya tıkladığında
+boş bir dosya görüyor — bu tam olarak projenin "sahte başarı" dediği
+risk kalıbı: ürün çalışıyor GİBİ görünüyor ama asıl işi yapmıyor.
 
-**Adım:**
-1. **Karar gerekiyor (Claude Code + operatör):** GTK4'te bir modal
-   parola/2FA penceresi mi yazılacak, yoksa `Adw.PasswordEntryRow`
-   kullanan basit bir `Adw.ApplicationWindow` mı? Ölçüt: mevcut
-   `SecurityHelper` API'siyle uyumlu olmalı (zaten parola doğrulama
-   mantığı `MultiSych.Services/Security` içinde var, yalnız arayüz
-   eksik).
-2. Karar `docs/KARARLAR.md`'e yazılır (K numarası alır).
-3. `Program.cs` `OnActivate` içine, `MainWindow` açılmadan ÖNCE, bir
-   güvenlik kapısı eklenir: `RequireStartupPassword` açıksa parola
-   doğrulanmadan `mainWindow.Present()` çağrılmaz.
-4. Ölü kod kararı: `LoginViewModel`/`SetupViewModel`/`AuthViewModel`
-   ya bu yeni akışa bağlanır ya da "bu üçü kullanılmıyor, silinecek"
-   diye `docs/KARARLAR.md`'e yazılıp kaldırılır — belirsiz hâlde
-   bırakılmaz.
+**Neden en öncelikli:** Geçen oturumun en büyük yatırımı (gerçek FUSE
+mount) bu olmadan kullanıcıya somut bir fayda sağlamıyor — yalnız boş
+klasörler gösteriyor.
 
-**Kabul ölçütü:** `tools/guvenlik-baslangic-testi.sh` yeşil **ve**
-operatör gerçek uygulamada parolayı deneyerek doğrular (statik kapı
-runtime davranışını garanti etmez, bu bilerek böyle — bkz. script içi
-yorum).
+**Adım (taslak, uygulamaya geçmeden önce netleştirilecek):**
+1. `CloudMirrorFsOperations.Open`'da dosya ilk açıldığında (lazy)
+   gerçek içeriği ilgili sağlayıcının API'sinden indirip yerel önbellek
+   dosyasına yazma mantığı eklenecek — `CloudStorageService`'te zaten
+   var olan indirme desenlerinden (`EditLocally` vb.) yararlanılabilir.
+2. Büyük dosyalarda tam indirmeyi beklemek mi (basit, yavaş) yoksa
+   parçalı/stream okuma mı (karmaşık, hızlı) — karar gerekiyor, ölçüm
+   olmadan seçilmeyecek.
+3. Yazma geri senkronu zaten `FileSystemWatcher` ile çalışıyor
+   (K22) — bu adım yalnız OKUMA tarafını tamamlıyor.
 
-**Kim:** Claude Code (karar + `Program.cs` bağlama), Codex (Login
-penceresi View kodu, iş paketiyle).
+**Kim:** Claude Code (mimari karar + uygulama, karmaşık/riskli alan).
 
 ---
 
-## FAZ 2 — Erişilemeyen özellikleri bağla veya kapat
+## FAZ 9 — Token yenileme ve OAuth kapsam eksikleri
 
-**Sorun:** 5 ViewModel (`AIOverviewViewModel`, `CalendarViewModel`,
-`DocumentAnalyzerViewModel`, `DocumentsViewModel`,
-`ErrorReportViewModel`) DI'da var, arayüzde yok.
+**Sorun 1 — Microsoft token yenileme başarısız:** MSAL'in
+`PublicClientApplicationBuilder.Create()` çağrısı her seferinde
+bellek-içi, kalıcı olmayan bir önbellekle taze nesne üretiyor;
+`AcquireTokenSilent` önceki interaktif girişi hiç bulamıyor.
+**Düzeltme:** MSAL'in `ITokenCache.SetBeforeAccess`/`SetAfterAccess`
+API'siyle diske kalıcı bir token önbelleği bağlanacak (iki yerde de —
+`AuthenticateMicrosoftAsync` ve `RefreshTokenAsync` AYNI
+`PublicClientApplicationBuilder` nesnesini/önbelleğini paylaşmalı).
 
-**Adım (her biri için ayrı ayrı karar):**
-1. Her ViewModel için: "bu özellik bitmiş mi, yalnız nav mı eksik" ya
-   da "özelliğin kendisi de yarım mı" diye bak (ViewModel içeriğini
-   oku).
-2. Nav mı eksikse: Codex'e iş paketi — `MainWindow.cs` sayfa
-   switch'ine bağlanacak View yazılır (mevcut `DashboardView.cs` gibi
-   örneklerden desen alınır).
-3. Özellik kendisi yarımsa: kapsam dışına al, DI kaydını kaldır,
-   `docs/KARARLAR.md`'e "şu an ertelendi, sebep şu" diye yaz,
-   `tools/erisim-testi.sh` içindeki `ISTISNALAR` listesine ekle.
-4. `docs/smoke-checklist.md`'i güncel duruma göre düzelt (Document
-   Analyzer adımı, karar 2'ye göre kaldırılır ya da nav eklenene kadar
-   "bilinen eksik" notu düşülür).
+**Sorun 2 — Google Gmail senkronizasyonu `403 Insufficient
+Permission`:** Orijinal OAuth scope dizesi (`AuthenticationService.cs:43`)
+yalnız `email profile calendar drive` istiyor, gmail kapsamı hiç
+istenmemiş. **Düzeltme:** scope dizesine gmail kapsamı eklenip
+kullanıcının Google hesabını YENİDEN bağlaması gerekiyor (mevcut
+refresh token'a sonradan kapsam eklenemez).
 
-**Kabul ölçütü:** `tools/erisim-testi.sh` yeşil (bağlanan + bilinçli
-ertelenen toplamı = kayıtlı VM sayısı, hiçbiri "unutulmuş" durumda
-kalmaz).
-
-**Kim:** Claude Code (karar), Codex (View + nav kodu), Antigravity
-(her ViewModel'in mevcut içeriğini okuyup "bitmiş mi yarım mı" ön
-raporu — küçük, dosya-bazlı paket).
+**Kim:** Claude Code (ikisi de kod + gerçek hesapla doğrulama
+gerektiriyor).
 
 ---
 
-## FAZ 3 — Bildirimleri gerçek çalışır hale getir
+## FAZ 10 — AI asistan entegrasyonu (hiç başlamadı)
 
-**Sorun:** `ShowNotification` hiçbir şey yapmıyor.
+**Sorun:** Sol menüde "Microsoft Copilot", "Google Gemini", "Yandex AI"
+butonları görünüyor ama hiçbiri için API anahtarı ayarlanmadı —
+tıklanınca ne olduğu bu denetimde kontrol edilmedi.
 
-**Adım:**
-1. `app.SendNotification(null, notification)` çağrısının neden
-   yorumda bırakıldığını araştır (GirCore API uyumsuzluğu mu, bilinçli
-   mi — commit geçmişine bak).
-2. Çalışan bir bildirim çağrısı yaz, gerekirse `Gio.Notification`
-   API'sinin GirCore 0.8.0'daki doğru kullanım şeklini bul.
-3. En az bir gerçek tetikleyiciyle (örn. senkronizasyon tamamlandığında)
-   uçtan uca dene — masaüstünde bildirim gerçekten görünmeli.
+**Adım:** Önce gerçek davranışı ölç (buton tıklanınca ne oluyor — hata
+mı veriyor, sessiz mi kalıyor), sonra API anahtarı akışını (muhtemelen
+`--set-ai-key` CLI komutuna benzer) tasarla.
 
-**Kabul ölçütü:** `tools/bildirim-testi.sh` yeşil **ve** operatör
-masaüstünde bildirimi gerçekten görür.
-
-**Kim:** Codex (uygulama), Claude Code (kapı doğrulama).
-
----
-
-## FAZ 4 — Çoklu dil desteğini geri getir
-
-**Sorun:** `en-US.axaml`/`tr-TR.axaml` silindi, yerine hiçbir i18n
-mekanizması konmadı; UI metinleri C# dosyalarına Türkçe gömülü.
-
-**Adım:**
-1. **Karar gerekiyor:** GTK dünyasının standardı `gettext`/`.po`
-   dosyalarıdır ama bu proje zaten JSON/CSV tabanlı veri katmanı
-   kullanıyor (`MultiSych.Services/Data`) — tutarlılık için basit bir
-   JSON kaynak sözlüğü (`tr.json`/`en.json` + `Loc.Get(key)` yardımcı
-   sınıfı) daha az bağımlılık getirebilir. Karar `docs/KARARLAR.md`'e
-   yazılır.
-2. Mevcut hardcoded string'lerin envanteri çıkarılır (Antigravity —
-   dosya-bazlı okuma paketi, `grep` zaten bugünkü denetimde başlangıç
-   sayılarını verdi: MainWindow 16, SettingsView 7, SyncView 3, vb.).
-3. String'ler kaynak sözlüğe taşınır, View'lar `Loc.Get(...)` çağırır.
-4. Yeni kapı yazılır: `tools/lokalizasyon-testi.sh` — View dosyalarında
-   iki karakterden uzun, tırnak içi Türkçe/İngilizce sabit metin
-   deseni ararsa **kırmızı** olur (negatif kontrolle sınanacak: bu
-   kapı yazıldığında bugünkü hardcoded string'ler üstünde çalıştırılıp
-   önce kırmızı çıktığı gösterilecek).
-
-**Kabul ölçütü:** yeni kapı yeşil, uygulama hem `tr` hem `en` ile
-açılıp gözle doğrulanır.
-
-**Kim:** Claude Code (karar + kapı yazımı), Codex (string taşıma —
-hacimli, mekanik), Antigravity (envanter raporu).
-
----
-
-## FAZ 5 — Eksik implementasyonu kapat
-
-**Sorun:** `CloudStorageService.SearchFilesAsync` koşulsuz
-`NotImplementedException`.
-
-**Adım:** Diğer `CloudStorageService` metodlarının provider-switch
-desenini örnek alarak gerçek arama implementasyonu yaz (Google
-Drive/OneDrive/Yandex Disk API'lerinin arama uç noktaları kullanılır).
-
-**Kabul ölçütü:** `tools/eksiklik-testi.sh` BASELINE'ı 1'den 0'a
-düşür, script yorumunu güncelle, kapı hâlâ yeşil.
-
-**Kim:** Codex (iş paketiyle, mevcut provider desenlerine sadık
-kalarak), Claude Code (kapı baseline güncellemesi + kabul).
-
----
-
-## FAZ 6 — Küçük artıkları temizle
-
-1. `MainWindow.axaml.cs` (0 byte, izlenmeyen) — silinir.
-2. `docs/smoke-checklist.md` — FAZ 2 kararlarına göre güncellenir.
-3. `GirCore1007` bastırması — **şimdilik dokunma.** GirCore
-   sürüm notları her büyük iş paketinden önce bir kez kontrol edilir;
-   stabil desen yayınlanırsa `docs/KARARLAR.md`'e not düşülüp
-   bastırma kaldırılır.
-
-**Kim:** Codex (dosya silme, checklist güncelleme), Claude Code
-(GirCore takibi — düşük öncelik, ayrı zamanlama gerektirmez).
-
----
-
-## FAZ 7 — Genel regresyon ve paketleme
-
-1. `tools/kapilar` uçtan uca yeşil.
-2. `scripts/verify.sh` yeşil (restore/build/test/publish).
-3. `docs/smoke-checklist.md`'deki manuel adımlar operatör tarafından
-   gerçek uygulamada koşulur (özellikle Güvenlik Checks bölümü —
-   zaten checklist'te var, FAZ 1'den sonra gerçek anlam kazanacak).
-4. `build-deb-package.sh` / `Dockerfile` ile paketleme denenir.
-
-**Kabul ölçütü:** bu belgedeki her fazın kabul ölçütü tek seferde,
-aynı commit üstünde, `tools/kapilar` ile yeşil.
+**Kim:** Belirlenmedi — kapsam henüz netleşmedi, önce ölçüm gerekiyor.
 
 ---
 
 ## 2. SIRADAKİ TEK ADIM
 
-**✅ FAZ 0 TAMAMLANDI (2026-09-20).** `.NET 10 SDK` kuruldu, birinci
-taraf paketler hizalandı, kanıt `docs/KARARLAR.md` K2-K3'te.
+**✅ Bugün (2026-10-12):** Yol haritası gerçek duruma göre yeniden
+yazıldı, `derleme`/`test` kapılarındaki locale hatası düzeltildi (K24),
+ölü `MainWindow.axaml.cs` silindi. `tools/kapilar` → 8/8 yeşil.
 
-**Sıradaki: FAZ 1 — güvenlik regresyonunu kapat.** K4 kararı (GTK4'te
-parola/2FA akışının nasıl kurulacağı) verilmeden `guvenlik-baslangic`
-kapısı yeşile dönemez.
+**Sıradaki: FAZ 8 — mount edilen dosyaların gerçek içeriği.** Bu,
+geçen oturumun en büyük yatırımını (gerçek FUSE mount) kullanıcıya
+gerçekten faydalı hale getiren tek eksik adım.

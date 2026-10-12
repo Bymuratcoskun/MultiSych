@@ -904,3 +904,52 @@ sınıf/proje geneline yayılan bir işaretleme DENENDİ ama
 sonsuza kadar kırmızı kalır" artık yalnız Microsoft için doğru (bilinen
 sebeple) — Google ve (muhtemelen) Yandex için otomatik olarak
 kendini düzeltiyor.
+
+---
+
+## K24 — YOL HARİTASI GÜNCELLENDİ, LOCALE KAYNAKLI KAPI HATASI DÜZELTİLDİ · 2026-10-12
+
+**Bulgu:** `docs/YOL-HARITASI.md` üç hafta eskiydi — hâlâ "FAZ 1
+sırada, FAZ 0 tamamlandı" diyordu, oysa `tools/kapilar` koşturulunca
+FAZ 0-5'in TAMAMININ fiilen bittiği görüldü (K4, K5, K10, K11, K15 ile
+çapraz doğrulandı). Belge iş yapıldıkça güncellenmemişti.
+
+**Ek bulgu (gerçek kapı hatası, operatörle "yol haritasını güncelle"
+isteği sırasında ölçülürken ortaya çıktı):** `tools/kapilar` ilk
+koşumda `derleme` ve `test` kapılarını **kırmızı** gösterdi. Kök sebep:
+`.kapilar.conf`'taki beklenen desenler İngilizce'ydi (`Build succeeded`,
+`Passed!`) ama bu makinedeki `dotnet` CLI çıktısı artık Türkçe
+(`Oluşturma başarılı oldu.`, `Başarılı!`) — muhtemelen f7deec0'daki
+locale self-re-exec düzeltmesinden beri sistem genelinde Türkçe
+locale'in etkisi arttı. **Gerçek build/test BAŞARILIYDI** (elle
+doğrulandı: `dotnet build` 0 hata, `dotnet test` 81/81), kapı yalnız
+yanlış dilde arıyordu.
+
+**Düzeltme:** `.kapilar.conf`'taki iki satıra `DOTNET_CLI_UI_LANGUAGE=en`
+env değişkeni eklendi — bu, `dotnet` CLI'nin kendi desteklediği resmi
+bir dil zorlama mekanizması (sistem locale'ini değiştirmeden yalnız bu
+komutun çıktısını İngilizce'ye sabitliyor). Türkçe metin içeren bir
+dosyada çok satırlı `sed`/`perl` kullanmama kuralına uyuldu, değişiklik
+Edit aracıyla yapıldı.
+
+**Negatif kontrol:** düzeltmeden ÖNCE `tools/kapilar` koşturulup
+`derleme`/`test` kırmızı olduğu görüldü (bu kararın kendisi o kırmızı
+çıktıyla yazıldı), düzeltmeden SONRA tekrar koşturulup 8/8 yeşile
+döndüğü doğrulandı.
+
+**Ayrıca bugün:** `MultiSych.Desktop/MainWindow.axaml.cs` (0 bayt,
+izlenmeyen, FAZ 6'nın ilk maddesiydi ama hiç yapılmamıştı) silindi.
+`dotnet build` + `tools/kapilar` 8/8 yeşil kaldığı doğrulandı.
+
+**Yol haritası yeniden yazıldı:** FAZ 0-5 "tamamlandı" olarak
+işaretlendi (karar numaralarıyla çapraz referanslı), K18-K23'teki
+OAuth/FUSE işi "YENİ KAPSAM" başlığı altına eklendi, kalan açık işler
+FAZ 8 (mount edilen dosyaların gerçek içeriği — en yüksek öncelik,
+gerekçesi: geçen oturumun en büyük yatırımını kullanıcıya faydalı
+kılan tek eksik adım), FAZ 9 (Microsoft token yenileme + Gmail scope),
+FAZ 10 (AI asistan entegrasyonu, hiç başlamadı) olarak numaralandı.
+
+**Bu kararın imkânsız kıldığı:** Bu projede "kapı yeşil" demek artık
+yalnızca İngilizce `dotnet` çıktısına güvenmiyor — sistem locale'i
+tekrar değişse bile (örn. yeni bir kurulumda), kapı kendi beklediği
+dili kendi zorluyor, sessizce kırmızıya dönmüyor.
