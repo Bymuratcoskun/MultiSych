@@ -98,7 +98,7 @@ sanal sürücü desteği. Özet (ayrıntı `docs/KARARLAR.md` K18-K23):
 
 ---
 
-## FAZ 8 — Mount edilen dosyaların GERÇEK içeriği 🟡 UYGULANDI, DOĞRULAMA BEKLİYOR
+## FAZ 8 — Mount edilen dosyaların GERÇEK içeriği 🔴 GERÇEK HATA BULUNDU
 
 **Sorun:** FUSE mount gerçek (kernel seviyesinde) ama içindeki dosyalar
 hâlâ 0 baytlık yer tutucuydu.
@@ -110,13 +110,30 @@ dosyanın üzerine yazıyor. `GetAttr` de artık indirmeden önce bile
 gerçek boyutu bildiriyor (dosya yöneticisinde "0 B" görünmesin diye).
 Test için `mount`/`unmount <accountId>` CLI komutları eklendi.
 
-**⚠️ DOĞRULAMA EKSİK:** Kod derleniyor, mantık incelemeyle doğru ama
-gerçek bir dosya indirmesiyle uçtan uca KANITLANAMADI — tek dolu
-hesabın (Google) token'ı ölü çıktı, operatör o an yeniden bağlanamadı.
-Ayrıntı ve sonraki adım: `docs/KARARLAR.md` K25.
+**🔴 YENİ BULGU (2026-10-12, dış inceleme + kod doğrulaması — bkz.
+§1.5 altında F02):** `DownloadFromGoogleDriveAsync`, native Google
+Docs/Sheets/Slides (`application/vnd.google-apps.*`) dosyalarını
+`Files.Get().DownloadAsync()` ile indirmeye çalışıyor — Google Drive
+API bu formatları bu yolla HİÇ vermiyor, `Files.Export()` gerektiriyor.
+Gerçek test hesabında doğrulandı: Google'daki 6 dosyadan 3'ü tam bu
+formatta — bu üç dosya mount üzerinden açılırsa sessizce boş kalır
+(`try/catch` hatayı yutup placeholder'ı koruyor). **FAZ 8'in
+"tamamlandı" sayılabilmesi için önce bu düzeltilmeli.**
 
-**Kim:** Claude Code (uygulandı), **operatör** (makinenin başında
-Google'ı yeniden bağlayıp canlı doğrulama — tek yapabilen o).
+**⚠️ Ek, düşük öncelikli bulgu (D04, dış inceleme):** `DownloadFileAsync`
+(üç sağlayıcı da) dosyayı indirirken önce TAMAMEN bir `MemoryStream`'e
+okuyor — rehberde "akışlı" denmişti, bu YANLIŞTI. Büyük bir dosya
+(ör. birkaç GB video) tüm boyutuyla bellekte tutulur. Düzeltme (parçalı/
+byte-range indirme) ayrı, daha büyük bir iş — şimdilik yalnız
+belgelendirilecek, bilinen bir sınır olarak.
+
+**⚠️ DOĞRULAMA EKSİK (K25'in asıl kapsamı için hâlâ geçerli):** PDF/düz
+metin dosyalarıyla gerçek bir indirmeyle uçtan uca KANITLANAMADI — tek
+dolu hesabın (Google) token'ı ölü çıktı, operatör o an yeniden
+bağlanamadı. Ayrıntı ve sonraki adım: `docs/KARARLAR.md` K25.
+
+**Kim:** Claude Code (F02 düzeltmesi + uygulama), **operatör** (makinenin
+başında Google'ı yeniden bağlayıp canlı doğrulama — tek yapabilen o).
 
 ---
 
@@ -146,7 +163,21 @@ canlı test edilmedi — operatörün tarayıcıda onay vermesi gerekiyor.
 Ayrıntı ve sonraki adım (tek oturumda hem Google hem Microsoft'u
 yeniden bağlama sırası): `docs/KARARLAR.md` K26.
 
-**Kim:** Claude Code (uygulandı), **operatör** (canlı doğrulama).
+**🟡 Düzeltme (D02, dış inceleme + araştırma — 2026-10-12):** K26'da
+ve `docs/PROJE-REHBERI.md`'de "Secret Service yoksa MSAL kendisi düz
+dosyaya düşüp uyarı loglar" denmişti — bu muhtemelen YANLIŞ. Araştırma:
+`WithUnprotectedFile()` açıkça çağrılmadıysa, `MsalCacheHelper.CreateAsync`
+Secret Service yokken muhtemelen **exception fırlatıyor**, sessizce düz
+dosyaya düşmüyor. Kendi kodumuzda `WithUnprotectedFile()` HİÇ
+çağrılmadı — ve çağrı zaten `try/catch` içinde, yani gerçek davranış
+muhtemelen "bellek-içi önbelleğe geri dön" (K23'ün orijinal sorunu
+sürer, ama hiç sır diske yazılmaz). Belgelenen davranıştan daha güvenli
+ama farklı — **KARARLAR.md K26 ve Rehber'in ilgili cümlesi düzeltilmeli,
+gerçek davranış Secret Service'siz bir ortamda bizzat ölçülerek
+kesinleştirilmeli** (bu makinede Secret Service var, test edilemedi).
+
+**Kim:** Claude Code (uygulandı + D02 düzeltmesi), **operatör** (canlı
+doğrulama).
 
 ---
 
@@ -164,22 +195,110 @@ mı veriyor, sessiz mi kalıyor), sonra API anahtarı akışını (muhtemelen
 
 ---
 
+## 1.5 — DIŞ İNCELEME (Perplexity, operatör talebiyle, 2026-10-12)
+
+Operatör, `docs/PROJE-REHBERI.md`'yi dış bir modele (Perplexity)
+inceletip bulguları getirdi. Claude Code üç en somut iddiayı (F02, D04,
+D02) kodda bizzat doğruladı — ikisi (F02, D04) gerçek çıktı, biri (D02)
+kendi belgelediğimiz bir yanlışı ortaya çıkardı. Kalan maddeler kod
+doğrulaması gerektirmeyen, kabul edilebilir mühendislik/süreç önerileri
+— aşağıda FAZ 11-13 olarak kabul edildi. Tam rapor operatörün elinde
+(bu depoya eklenmedi, sır içermiyor ama üçüncü parti bir belge).
+
+**Zaten FAZ 8-9'a işlenen (yukarıda):** F02 (Google Docs export hatası,
+🔴 gerçek hata), D04 (bellek sınırsız indirme, bilinen sınır), D02
+(MSAL fallback belge hatası).
+
+### FAZ 11 — Güvenlik ve veri bütünlüğü sertleştirmesi (dış inceleme G01-G05)
+
+Öncelik sırası dış incelemenin kendi P0 sınıflandırmasıyla aynı —
+makul bulundu, değiştirilmedi:
+
+1. **G01 — Token/anahtar yaşam döngüsü belgelenmeli:** SQLCipher
+   anahtarının kaynağı, kilitleme/çıkış davranışı ve silme politikası
+   şu an hiçbir yerde açık değil.
+2. **G02 — Yarım indirme atomik olmalı:** FAZ 8'in indirme mantığı şu
+   an dosyayı doğrudan hedef yola yazıyor; kesinti olursa yarım dosya
+   "tam" gibi görünebilir. Düzeltme: geçici dosyaya yaz, boyut/hash
+   doğrula, aynı dosya sisteminde atomik rename yap.
+3. **G03 — Mount yazma/silme sözleşmesi netleşmeli:** Şu an yazma
+   davranışı (truncate/rename/delete/uzak değişiklik) belgeli değil.
+   İlk güvenilir sürümde salt-okunur mod açıkça ilan edilebilir.
+4. **G04 — Cache yol izolasyonu test edilmeli:** `CloudMirrorFsOperations`
+   yerel dosya sistemi sınırında çalışıyor; symlink kaçışı, ad
+   çakışması gibi senaryolar hiç test edilmedi.
+5. **G05 — Yedek/geri yükleme doğruluğu:** K12'de düzeltilen eski
+   hata (yanlış dosyaya yedek) bir daha olmasın diye format/sürüm/sır
+   dahil olma durumu açıkça belgelenmeli, restore öncesi doğrulama
+   eklenmeli.
+
+**Kim:** Claude Code (uygulama), operatör (kabul).
+
+### FAZ 12 — Eşzamanlılık, kimlik ve senkronizasyon sertleştirmesi (E01-E05)
+
+1. **E01 — Hesap tekilleştirme veritabanında garanti edilmeli:** K22'de
+   bulunan "aynı hesap iki kez kayıtlı" sorununun kök sebebi hâlâ
+   bilinmiyor. Öneri: sağlayıcı + sabit kimlik (e-posta, Microsoft'ta
+   tenant/home-account ayrımına dikkat) üzerinde UNIQUE kısıt +
+   transaction içinde upsert.
+2. **E02 — Scope/DbContext ömürleri denetlenmeli:** Singleton servisler
+   (K22) ile Transient/Scoped servisler bir arada kullanılıyor,
+   bağımlılık grafiği hiç çıkarılmadı.
+3. **E03 — Token yenileme ve sync tekrarları koordine edilmeli:**
+   GUI'nin periyodik senkronu ile CLI'nin `sync-all`'ı aynı anda aynı
+   hesabı yenilemeye çalışırsa ne olur, hiç test edilmedi.
+4. **E04 — Delta sync/silme/çakışma sözleşmesi eksik:** Sayfalama,
+   uzak silme ve çevrimdışı değişiklik kuyruğu davranışı belgeli değil.
+5. **E05 — Yapılandırma tek kaynaktan gelmeli:** Zaten bilinen bir
+   bulgu (kod varsayılanı 15 dakika, `.env.example` 30 yazıyor —
+   `docs/PROJE-REHBERI.md` §2'de not edilmişti), burada resmi bir iş
+   maddesi olarak teyit edildi.
+
+**Kim:** Claude Code (uygulama), operatör (kabul).
+
+### FAZ 13 — Test/dağıtım/kullanıcı deneyimi iyileştirmeleri (T01-T05, F01, F03-F04)
+
+Düşük-orta öncelikli, FAZ 11-12'den sonra ele alınacak:
+
+- Native bağımlılıkların (libfuse3, SQLCipher) hiç paketlenip
+  denenmediği (zaten FAZ 7'de biliniyordu, burada teyit edildi).
+- Büyük dosyalar için parçalı/byte-range indirme (F01, D04'ün gerçek
+  çözümü).
+- "81 test" sayısının tek başına kalite ölçütü sayılmaması — sağlayıcı
+  API'leri, FUSE davranışı ve token kalıcılığı için ayrı, gerçek
+  entegrasyon testleri gerekiyor.
+- Çevrimdışı çalışmanın kapsamının (yalnız metadata mı, dosya içeriği
+  de mi) kullanıcıya açıkça anlatılması.
+
+**Kim:** Belirlenmedi, FAZ 11-12 bitmeden sıraya alınmayacak.
+
+**Operatörün P2 önceliği onaylandı:** AI entegrasyonu (FAZ 10), FAZ
+11-13'ten SONRA ele alınacak — dış incelemenin de önerdiği sıralama bu.
+
+---
+
 ## 2. SIRADAKİ TEK ADIM
 
 **✅ Bugün (2026-10-12):** Yol haritası gerçek duruma göre yeniden
 yazıldı, `derleme`/`test` kapılarındaki locale hatası düzeltildi (K24),
 ölü `MainWindow.axaml.cs` silindi. FAZ 8 (gerçek dosya indirme, K25) ve
-FAZ 9 (Microsoft MSAL kalıcı önbellek + Gmail scope, K26) uygulandı,
-`tools/kapilar` → 8/8 yeşil, **ama ikisi de canlı doğrulama bekliyor**
-— operatör o an telefondan bağlıydı, interaktif OAuth onayı
-veremiyordu.
+FAZ 9 (Microsoft MSAL kalıcı önbellek + Gmail scope, K26) uygulandı.
+Operatörün istediği dış inceleme (Perplexity) işlendi — F02 (Google
+Docs export hatası) ve D04 (bellek sınırsız indirme) kodda doğrulanan
+gerçek bulgular, D02 kendi belgelediğimiz bir yanlışı ortaya çıkardı;
+kalan kabul edilen maddeler FAZ 11-13 olarak eklendi (§1.5).
 
-**Sıradaki: operatör makinenin başına geçince, TEK oturumda:**
+**Şu an başlanan: FAZ 8'in F02 düzeltmesi** — Google Docs/Sheets/Slides
+için `Files.Export()` yolu eklenecek (Claude Code, kod değişikliği,
+operatör etkileşimi gerektirmiyor).
+
+**Operatör makinenin başına geçince, TEK oturumda (K25/K26'nın asıl
+doğrulaması):**
 1. Google'ı yeniden bağla (yeni gmail scope + taze refresh token).
 2. Microsoft'u yeniden bağla, `sync-all` koştur — sessiz yenileme
    gerçekten çalışıyor mu gör.
-3. `mount <accountId>` ile gerçek bir dosyaya eriş, içeriğin indiğini
-   doğrula.
-4. Hepsi başarılıysa K25/K26 "tamamlandı" işaretlenir, sıradaki FAZ 10
-   (AI asistan entegrasyonu) ele alınır.
+3. `mount <accountId>` ile hem bir PDF'e hem bir Google Doc'a eriş
+   (F02 düzeltmesi de dahil test edilsin), içeriğin indiğini doğrula.
+4. Hepsi başarılıysa K25/K26 "tamamlandı" işaretlenir, sıradaki FAZ 11
+   (güvenlik/veri bütünlüğü sertleştirmesi) ele alınır.
 
