@@ -50,6 +50,7 @@ MultiSych.Tests/       — xUnit testleri (şu an 81 test, hepsi gerçek davran�
 ```
 
 **Katmanlar arası akış (özet):**
+
 - `Program.cs` hem GUI başlatıcı hem CLI komut işleyicisi (`auth-google`,
   `sync-all`, `mount <id>`, `list-accounts` vb.) — ikisi de aynı DI
   container'ı kullanıyor.
@@ -69,6 +70,7 @@ MultiSych.Tests/       — xUnit testleri (şu an 81 test, hepsi gerçek davran�
 
 **Dikkat edilmesi gereken mimari kararlar (gelecekte "neden böyle"
 diye sorulacaksa):**
+
 - Dil değişimi (TR/EN) **anlık değil**, uygulama yeniden başladığında
   etkili oluyor — GTK View'ları metinlerini yalnız ilk inşa anında
   okuyor, canlı yeniden bağlama altyapısı yok (K11).
@@ -268,11 +270,13 @@ gerçekten çalışıyor, ne kadarı yarım/placeholder — bilinmiyor.
 ## 7. Hızlı referans
 
 **Projenin üç ana belgesi (her zaman güncel tutulmalı):**
+
 - `docs/YOL-HARITASI.md` — hangi fazdayız, sıradaki iş ne
 - `docs/KARARLAR.md` — her kararın tam gerekçesi ve kanıtı (K1-K26)
 - `docs/KURALLAR.md` — ekip çalışma kuralları (kim ne yapar, kabul süreci)
 
 **Sık kullanılan komutlar:**
+
 ```bash
 # Tüm kapıları tek seferde koştur
 bash tools/kapilar
@@ -297,6 +301,7 @@ dotnet run --project MultiSych.Desktop/MultiSych.Desktop.csproj -- unmount <acco
 ```
 
 **Önemli dosya konumları:**
+
 - Veritabanı: `~/.config/MultiSych/multisych.db` (SQLCipher şifreli)
 - Gizli bilgiler: `.env` (gitignore'da, asla commit edilmez)
 - Mount edilen sürücüler: `~/MultiSych_Drives/<rastgele-id>`
