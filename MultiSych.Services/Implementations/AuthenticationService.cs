@@ -10,6 +10,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client;
+using Microsoft.Identity.Client.Extensions.Msal;
 using MultiSych.Services.Interfaces;
 using MultiSych.Services.Models;
 using MultiSych.Services.Configuration;
@@ -26,6 +27,54 @@ public class AuthenticationService : IAuthenticationService
     {
         _config = config;
     }
+
+    // Kök sebep (K24/FAZ 9, ölçüldü): AuthenticateMicrosoftAsync ve RefreshTokenAsync
+    // her çağrıda AYRI bir PublicClientApplicationBuilder.Create() nesnesi
+    // üretiyordu — MSAL'in token önbelleği varsayılan olarak yalnız BELLEK İÇİ,
+    // bu yüzden AcquireTokenSilent (RefreshTokenAsync) hiçbir zaman interaktif
+    // girişteki hesabı bulamıyordu (gerçek sync-all koşumunda "Token refresh
+    // FAILED" olarak doğrulandı). Çözüm: Microsoft'un resmi
+    // Microsoft.Identity.Client.Extensions.Msal paketiyle DİSKE kalıcı, aynı
+    // uygulama içindeki her IPublicClientApplication'ın paylaştığı bir önbellek
+    // bağlanıyor. Linux'ta mümkünse Secret Service (GNOME Keyring/KWallet)
+    // üzerinden şifreli saklanır; kullanılamıyorsa MSAL kendisi düz dosyaya
+    // düşer ve uyarı loglar (üçüncü parti kütüphanenin kendi davranışı).
+    private static async Task<IPublicClientApplication> BuildMicrosoftAppAsync(string clientId, string? tenantId, string? redirectUrl = null)
+    {
+        var builder = PublicClientApplicationBuilder.Create(clientId)
+            .WithAuthority(AzureCloudInstance.AzurePublic, string.IsNullOrWhiteSpace(tenantId) ? "common" : tenantId);
+
+        if (!string.IsNullOrWhiteSpace(redirectUrl))
+        {
+            builder = builder.WithRedirectUri(redirectUrl);
+        }
+
+        var app = builder.Build();
+
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MultiSych");
+        Directory.CreateDirectory(cacheDir);
+
+        var storageProperties = new StorageCreationPropertiesBuilder("msal_cache.bin", cacheDir)
+            .WithLinuxKeyring(
+                schemaName: "com.multisych.msaltokencache",
+                collection: MsalCacheHelper.LinuxKeyRingDefaultCollection,
+                secretLabel: "MultiSych Microsoft OAuth token cache",
+                attribute1: new KeyValuePair<string, string>("Version", "1"),
+                attribute2: new KeyValuePair<string, string>("Product", "MultiSych"))
+            .Build();
+
+        try
+        {
+            var cacheHelper = await MsalCacheHelper.CreateAsync(storageProperties);
+            cacheHelper.RegisterCache(app.UserTokenCache);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "MSAL kalıcı token önbelleği kurulamadı — oturum yalnız bellek içi kalacak, her süreç yeniden interaktif giriş isteyebilir.");
+        }
+
+        return app;
+    }
     public async Task<AccountCredentials> AuthenticateGoogleAsync(string clientId, string clientSecret, string redirectUrl)
     {
         if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
@@ -40,7 +89,11 @@ public class AuthenticationService : IAuthenticationService
                       $"client_id={clientId}&" +
                       $"redirect_uri={Uri.EscapeDataString(redirectUrl)}&" +
                       $"response_type=code&" +
-                      $"scope={Uri.EscapeDataString("email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive")}&" +
+                      // gmail kapsamı K24/FAZ 9'da eklendi: CloudEmailService.cs içinde
+                      // List/Get/Send/Modify'nin yanı sıra Users.Messages.Delete (KALICI
+                      // silme, Trash'i atlıyor) de çağrılıyor — bunu yalnız tam erişim
+                      // kapsamı (mail.google.com) karşılıyor, gmail.modify/readonly yetmez.
+                      $"scope={Uri.EscapeDataString("email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive https://mail.google.com/")}&" +
                       $"code_challenge={codeChallenge}&" +
                       $"code_challenge_method=S256&" +
                       $"access_type=offline&" +
@@ -99,10 +152,7 @@ public class AuthenticationService : IAuthenticationService
 
     public async Task<AccountCredentials> AuthenticateMicrosoftAsync(string clientId, string clientSecret, string redirectUrl, string? tenantId)
     {
-        var app = PublicClientApplicationBuilder.Create(clientId)
-            .WithAuthority(AzureCloudInstance.AzurePublic, string.IsNullOrWhiteSpace(tenantId) ? "common" : tenantId)
-            .WithRedirectUri(redirectUrl)
-            .Build();
+        var app = await BuildMicrosoftAppAsync(clientId, tenantId, redirectUrl);
 
         // Gerekli izin kapsamları
         string[] scopes = { "User.Read", "Mail.ReadWrite", "Calendars.ReadWrite", "Files.ReadWrite.All", "offline_access" };
@@ -319,9 +369,7 @@ public class AuthenticationService : IAuthenticationService
                     return false;
                 }
 
-                var app = PublicClientApplicationBuilder.Create(clientId)
-                    .WithAuthority(AzureCloudInstance.AzurePublic, string.IsNullOrWhiteSpace(_config.Microsoft?.TenantId) ? "common" : _config.Microsoft.TenantId)
-                    .Build();
+                var app = await BuildMicrosoftAppAsync(clientId, _config.Microsoft?.TenantId);
 
                 var accounts = await app.GetAccountsAsync();
                 var account = accounts.FirstOrDefault(a => a.Username.Equals(credentials.Email, StringComparison.OrdinalIgnoreCase));

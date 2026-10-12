@@ -421,6 +421,7 @@ internal static class Program
         var calendarService = sp.GetService<ICalendarService>();
         var storageService = sp.GetService<IStorageService>();
         var aiService = sp.GetService<IAIService>();
+        var virtualDriveService = sp.GetService<IVirtualDriveService>();
 
         static void PrintHelp()
         {
@@ -429,6 +430,8 @@ internal static class Program
             Console.WriteLine("  auth-microsoft    Authenticate with a Microsoft account");
             Console.WriteLine("  auth-yandex       Authenticate with a Yandex account");
             Console.WriteLine("  list-accounts     List saved accounts");
+            Console.WriteLine("  mount <accountId>    Mount a real FUSE drive for an account");
+            Console.WriteLine("  unmount <accountId>  Unmount a mounted drive");
             Console.WriteLine("  sync-all          Trigger a sync cycle for all accounts");
             Console.WriteLine("  ai-chat           Start a simple AI chat session");
             Console.WriteLine("  setup-security    Create or update local security settings");
@@ -538,8 +541,49 @@ internal static class Program
                     Console.WriteLine("Connected accounts:");
                     foreach (var account in accounts)
                     {
-                        Console.WriteLine($"- {account.Provider}: {account.Email} (Expires: {account.ExpiresAt:O})");
+                        Console.WriteLine($"- {account.Provider}: {account.Email} (AccountId: {account.AccountId}, Expires: {account.ExpiresAt:O})");
                     }
+                    return true;
+
+                case "mount":
+                    if (virtualDriveService == null || accountStore == null)
+                    {
+                        Console.WriteLine("Virtual drive or account store service is not available.");
+                        return true;
+                    }
+                    if (args.Length < 2)
+                    {
+                        Console.WriteLine("Usage: mount <accountId>");
+                        return true;
+                    }
+
+                    var mountAccount = await accountStore.GetAccountAsync(args[1]);
+                    if (mountAccount == null)
+                    {
+                        Console.WriteLine($"No account found with AccountId {args[1]}.");
+                        return true;
+                    }
+
+                    var mountOk = await virtualDriveService.MountDriveAsync(args[1]);
+                    Console.WriteLine(mountOk
+                        ? $"Mounted {mountAccount.Provider} - {mountAccount.Email}."
+                        : $"Failed to mount {mountAccount.Provider} - {mountAccount.Email}.");
+                    return true;
+
+                case "unmount":
+                    if (virtualDriveService == null)
+                    {
+                        Console.WriteLine("Virtual drive service is not available.");
+                        return true;
+                    }
+                    if (args.Length < 2)
+                    {
+                        Console.WriteLine("Usage: unmount <accountId>");
+                        return true;
+                    }
+
+                    var unmountOk = await virtualDriveService.UnmountDriveAsync(args[1]);
+                    Console.WriteLine(unmountOk ? "Unmounted." : "Failed to unmount (was it mounted?).");
                     return true;
 
                 case "sync-all":

@@ -953,3 +953,91 @@ FAZ 10 (AI asistan entegrasyonu, hiç başlamadı) olarak numaralandı.
 yalnızca İngilizce `dotnet` çıktısına güvenmiyor — sistem locale'i
 tekrar değişse bile (örn. yeni bir kurulumda), kapı kendi beklediği
 dili kendi zorluyor, sessizce kırmızıya dönmüyor.
+
+---
+
+## K25 — FAZ 8 (talep üzerine gerçek dosya indirme) UYGULANDI, DOĞRULAMA YARIM · 2026-10-12
+
+**Uygulanan (FAZ 8):** `CloudMirrorFsOperations`'a hesap bağlamı
+(`accountId`, `IStorageService`, `IAccountStore`, `IDbContextFactory`)
+eklendi.
+- `Open()`: dosya açılmadan ÖNCE, yerel yer tutucunun boyutu
+  veritabanındaki gerçek bulut dosya boyutundan küçükse (henüz
+  indirilmemiş demek), `IStorageService.DownloadFileAsync` ile gerçek
+  içerik indirilip yerel dosyanın üzerine yazılıyor. Zaten tam boyuttaysa
+  (önceden indirilmiş) hiçbir şey yapmıyor — gereksiz tekrar indirme yok.
+- `GetAttr()`: `st_size` artık indirme beklemeden bile veritabanındaki
+  GERÇEK boyutu bildiriyor — aksi halde Dolphin/Nautilus gibi dosya
+  yöneticileri her dosyayı indirmeden önce "0 B" gösterip "bozuk sürücü"
+  izlenimi verirdi.
+- Test için `mount <accountId>` / `unmount <accountId>` CLI komutları
+  eklendi (`auth-google`, `sync-all` gibi mevcut CLI desenine uygun) —
+  operatör uzaktaydı, GUI'ye tıklayamadı, bu komutlar olmadan test
+  edilemezdi.
+
+**⚠️ DOĞRULAMA EKSİK (iddia değil, dürüst sınır):** Gerçek bir dosya
+indirmesiyle uçtan uca KANITLANAMADI. Kod derleniyor (0 hata), mantık
+incelemeyle doğru görünüyor, ama canlı test iki ayrı engelle karşılaştı:
+1. Elimdeki tek dolu-dosyalı hesap (Google, 6 gerçek dosya, en büyüğü
+   997 KB) token'ı tamamen ölü — "Token has been expired or revoked"
+   (aşağıda K26'da açıklanan Google testing-mode 7 gün politikası).
+2. Operatör o sırada işte, telefondan bağlı — tarayıcıda interaktif
+   OAuth onayı gerektiren bir yeniden-bağlanmayı o anda yapamadı.
+
+**Sonraki adım:** Operatör makinenin başına geçtiğinde Google'ı (K26
+scope düzeltmesiyle birlikte) yeniden bağlayıp `mount <accountId>` +
+gerçek bir dosyaya erişerek FAZ 8'i uçtan uca doğrulamak gerekiyor.
+O doğrulama yapılmadan bu madde "tamamlandı" sayılmayacak.
+
+---
+
+## K26 — FAZ 9 BAŞLANDI: Gmail scope eklendi, Microsoft MSAL kalıcı önbelleği uygulandı (doğrulama operatörü bekliyor)
+
+**Bulgu 1 (Gmail 403'ün tam kök sebebi):** `CloudEmailService.cs`
+incelendi — uygulama yalnız okuma/gönderme/etiketleme değil,
+`Users.Messages.Delete` (KALICI silme, Trash'i atlıyor) de çağırıyor.
+Bu işlem yalnız tam erişim kapsamıyla (`https://mail.google.com/`)
+mümkün; `gmail.readonly`/`gmail.modify` yetmiyor. **Düzeltme:**
+`AuthenticationService.cs:43`'teki OAuth scope dizesine
+`https://mail.google.com/` eklendi.
+
+**Bulgu 2 (Microsoft token yenilemesinin neden başarısız olduğu, kesin
+kanıt):** Gerçek `sync-all` koşumunda ölçüldü — her iki
+`PublicClientApplicationBuilder.Create()` çağrısı (interaktif giriş VE
+sessiz yenileme) ayrı, bellek-içi bir MSAL nesnesi üretiyordu;
+`AcquireTokenSilent` önceki interaktif girişteki hesabı asla
+bulamıyordu çünkü o nesne çoktan yok edilmişti.
+
+**Düzeltme:** Microsoft'un resmi `Microsoft.Identity.Client.Extensions.Msal`
+paketi (nuget.org, 1,8 milyar indirme, AzureAD/Microsoft sahipliğinde)
+eklendi. Yeni paylaşılan `BuildMicrosoftAppAsync` yardımcı metodu, her
+iki çağrı yerinde AYNI diske kalıcı MSAL önbelleğini (`~/.config/
+MultiSych/msal_cache.bin`) `MsalCacheHelper.RegisterCache` ile
+bağlıyor. Linux'ta `WithLinuxKeyring` ile Secret Service (D-Bus
+`org.freedesktop.secrets`) üzerinden şifreli saklama deneniyor;
+bu makinede KDE'nin `ksecretd`'i (`kwalletd6` arkasında) çalıştığı
+`busctl --user list` ile doğrulandı — yani önbellek burada düz metin
+DEĞİL, şifreli saklanacak. Secret Service yoksa MSAL kendisi düz
+dosyaya düşüp uyarı loglar (üçüncü parti kütüphanenin kendi davranışı,
+kodumuzda da try/catch ile loglanıyor).
+
+**⚠️ DOĞRULAMA EKSİK (iddia değil, dürüst sınır):** Kod derleniyor
+(0 hata), `tools/kapilar` 8/8 yeşil, ama HİÇBİR değişiklik gerçek bir
+interaktif girişle canlı test edilmedi — ikisi de operatörün tarayıcıda
+onay vermesini gerektiriyor, o an telefonla işteydi. Microsoft önbellek
+düzeltmesinin gerçekten işe yaradığı ancak şöyle doğrulanabilir: (1)
+`auth-microsoft` ile interaktif giriş yap, (2) AYRI bir süreçte
+(`sync-all` veya arka plan senkronu) token'ın süresi dolduğunda sessiz
+yenilemenin gerçekten başarılı olduğunu gör.
+
+**Sonraki adım (operatör makinenin başına geçince, TEK oturumda):**
+1. Google'ı yeniden bağla (yeni scope + taze refresh token, K25'in de
+   önündeki engeli kaldırır).
+2. Microsoft'u yeniden bağla, sonra `sync-all`'ı tekrar koştur — "Token
+   refreshed" mi yoksa hâlâ "FAILED" mi görünüyor, gerçek sonucu gör.
+3. Her ikisi de başarılıysa K25 ve K26 "tamamlandı" olarak işaretlenir;
+   başarısızsa yeni bulgu neyse ona göre devam edilir.
+
+**Bu kararların imkânsız kıldığı:** Bu iki değişikliği "bitti" diye
+rapor etmek — ikisi de yalnızca "uygulandı, derleniyor" aşamasında,
+"çalışıyor" iddiası canlı kanıt gelene kadar atılmayacak.

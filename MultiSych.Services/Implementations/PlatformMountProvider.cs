@@ -20,6 +20,7 @@ namespace MultiSych.Services.Implementations
     {
         private readonly ILogger _logger = Log.ForContext<PlatformMountProvider>();
         private readonly IStorageService _storageService;
+        private readonly IAccountStore _accountStore;
         private readonly IDbContextFactory<LocalCacheDbContext> _dbContextFactory;
         private readonly RuntimeSyncSettings _runtimeSyncSettings;
 
@@ -49,9 +50,10 @@ namespace MultiSych.Services.Implementations
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, CloudMirrorFsOperations> _activeFuseMounts = new();
 #pragma warning restore CA1416
 
-        public PlatformMountProvider(IStorageService storageService, IDbContextFactory<LocalCacheDbContext> dbContextFactory, RuntimeSyncSettings runtimeSyncSettings)
+        public PlatformMountProvider(IStorageService storageService, IAccountStore accountStore, IDbContextFactory<LocalCacheDbContext> dbContextFactory, RuntimeSyncSettings runtimeSyncSettings)
         {
             _storageService = storageService;
+            _accountStore = accountStore;
             _dbContextFactory = dbContextFactory;
             _runtimeSyncSettings = runtimeSyncSettings;
         }
@@ -148,7 +150,7 @@ namespace MultiSych.Services.Implementations
                 // Gerçek FUSE mount'u ayrı bir arka plan iş parçacığında başlat — Mount()
                 // çağrısı unmount edilene kadar bloklar, bu yüzden burada await edilemez.
 #pragma warning disable CA1416
-                var operations = new CloudMirrorFsOperations(targetPath);
+                var operations = new CloudMirrorFsOperations(targetPath, accountId, _storageService, _accountStore, _dbContextFactory);
                 _activeFuseMounts[mountPoint] = operations;
 
                 // "-f" ŞART: fuse_main varsayılan olarak süreci native fork() ile ikiye

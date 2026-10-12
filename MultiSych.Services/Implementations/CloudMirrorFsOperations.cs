@@ -3,9 +3,14 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.Versioning;
+using System.Threading.Tasks;
 using FuseDotNet;
 using FuseDotNet.Extensions;
 using LTRData.Extensions.Native.Memory;
+using Microsoft.EntityFrameworkCore;
+using MultiSych.Services.Data;
+using MultiSych.Services.Interfaces;
+using Serilog;
 
 namespace MultiSych.Services.Implementations;
 
@@ -14,18 +19,69 @@ namespace MultiSych.Services.Implementations;
 /// (docs/KARARLAR.md K22). Gerçek bir yerel klasörü (basePath — hesabın
 /// zaten senkronize edilmiş yer tutucu/gerçek dosyaları içeren gölge
 /// klasörü) çekirdek seviyesinde gerçek bir FUSE mount noktasına
-/// yansıtır. Yükleme mantığı burada YOK — o hâlâ PlatformMountProvider'ın
-/// FileSystemWatcher'ında (basePath'i izliyor); bu sınıf yalnız
-/// kullanıcıya "gerçek bir sürücü" deneyimi vermekle sorumlu.
+/// yansıtır. Yazma geri senkronu burada YOK — o hâlâ PlatformMountProvider'ın
+/// FileSystemWatcher'ında (basePath'i izliyor). OKUMA tarafı (K24/FAZ 8):
+/// Open() çağrıldığında, yerel yer tutucu dosya gerçek bulut içeriğinden
+/// küçükse (henüz indirilmemiş demektir), dosya açılmadan ÖNCE gerçek
+/// içerik indirilip yerel dosyaya yazılır — kullanıcı artık boş dosya
+/// görmüyor.
 /// </summary>
 [SupportedOSPlatform("linux")]
 [SupportedOSPlatform("freebsd")]
-internal sealed class CloudMirrorFsOperations(string basePath) : IFuseOperations
+internal sealed class CloudMirrorFsOperations(
+    string basePath,
+    string accountId,
+    IStorageService storageService,
+    IAccountStore accountStore,
+    IDbContextFactory<LocalCacheDbContext> dbContextFactory) : IFuseOperations
 {
+    private readonly ILogger _logger = Log.ForContext<CloudMirrorFsOperations>();
+
     public string BasePath { get; } = basePath;
 
     private string GetPath(ReadOnlyNativeMemory<byte> fileNamePtr)
         => Path.Join(BasePath, FuseHelper.GetString(fileNamePtr));
+
+    /// <summary>
+    /// Yerel yer tutucu dosya, veritabanındaki gerçek bulut dosya boyutundan
+    /// küçükse (henüz indirilmemiş) gerçek içeriği indirip yerel dosyanın
+    /// üzerine yazar. Dosya izlenmiyorsa (DB'de yoksa) ya da zaten tam
+    /// boyuttaysa hiçbir şey yapmaz — gereksiz tekrar indirme olmaz.
+    /// </summary>
+    private async Task EnsureRealContentDownloadedAsync(string localPath)
+    {
+        if (!File.Exists(localPath)) return;
+
+        var relativePath = "/" + Path.GetRelativePath(BasePath, localPath).Replace('\\', '/');
+
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync();
+        var fileEntity = await dbContext.CloudFiles.FirstOrDefaultAsync(
+            f => f.AccountId == accountId && f.Path == relativePath && !f.IsDirectory);
+
+        if (fileEntity == null) return;
+
+        var localSize = new System.IO.FileInfo(localPath).Length;
+        if (localSize >= fileEntity.FileSize) return;
+
+        var credentials = await accountStore.GetAccountAsync(accountId);
+        if (credentials == null)
+        {
+            _logger.Warning("FUSE lazy-download: account {AccountId} not found, cannot download {Path}", accountId, relativePath);
+            return;
+        }
+
+        try
+        {
+            _logger.Information("FUSE lazy-download: fetching real content for {Path} ({Size} bytes)", relativePath, fileEntity.FileSize);
+            using var remoteStream = await storageService.DownloadFileAsync(credentials, fileEntity.FileId);
+            await using var localStream = File.Open(localPath, FileMode.Create, FileAccess.Write, FileShare.None);
+            await remoteStream.CopyToAsync(localStream);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "FUSE lazy-download failed for {Path}; serving placeholder content.", relativePath);
+        }
+    }
 
     public PosixResult Access(ReadOnlyNativeMemory<byte> fileNamePtr, PosixAccessMode mask)
     {
@@ -43,6 +99,29 @@ internal sealed class CloudMirrorFsOperations(string basePath) : IFuseOperations
 
     public PosixResult FSyncDir(ReadOnlyNativeMemory<byte> fileNamePtr, bool datasync, ref FuseFileInfo fileInfo) => PosixResult.ENOSYS;
 
+    /// <summary>
+    /// DB'de izlenen bir dosyaysa gerçek bulut boyutunu, değilse yerel boyutu
+    /// döndürür. GetAttr çok sık çağrıldığı için senkron ve ucuz tutuluyor
+    /// (EF Core DbContextFactory senkron çağrıyı destekliyor, ekstra iş
+    /// parçacığı atlaması gerekmiyor).
+    /// </summary>
+    private long GetReportedSize(string localPath, long localSize)
+    {
+        try
+        {
+            var relativePath = "/" + Path.GetRelativePath(BasePath, localPath).Replace('\\', '/');
+            using var dbContext = dbContextFactory.CreateDbContext();
+            var fileEntity = dbContext.CloudFiles
+                .FirstOrDefault(f => f.AccountId == accountId && f.Path == relativePath && !f.IsDirectory);
+            return fileEntity != null && fileEntity.FileSize > localSize ? fileEntity.FileSize : localSize;
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "GetReportedSize sorgusu başarısız, yerel boyuta geri dönülüyor: {Path}", localPath);
+            return localSize;
+        }
+    }
+
     public PosixResult GetAttr(ReadOnlyNativeMemory<byte> fileNamePtr, out FuseFileStat stat, ref FuseFileInfo fileInfo)
     {
         var path = GetPath(fileNamePtr);
@@ -52,7 +131,11 @@ internal sealed class CloudMirrorFsOperations(string basePath) : IFuseOperations
             var info = new System.IO.FileInfo(path);
             stat = new()
             {
-                st_size = info.Length,
+                // Henüz indirilmemiş (yer tutucu, 0 bayt) dosyalar için bile
+                // GERÇEK bulut boyutunu bildiriyoruz — aksi halde Dolphin/Nautilus
+                // gibi dosya yöneticileri indirmeden önce her şeyi "0 B" gösterir,
+                // bu da kullanıcıya "bozuk sürücü" izlenimi verir (K24/FAZ 8).
+                st_size = GetReportedSize(path, info.Length),
                 st_birthtim = info.CreationTimeUtc,
                 st_mtim = info.LastWriteTimeUtc,
                 st_ctim = info.LastWriteTimeUtc,
@@ -93,7 +176,16 @@ internal sealed class CloudMirrorFsOperations(string basePath) : IFuseOperations
 
     public PosixResult Open(ReadOnlyNativeMemory<byte> fileNamePtr, ref FuseFileInfo fileInfo)
     {
-        fileInfo.Context = File.Open(GetPath(fileNamePtr), fileInfo.flags.ToFileMode(), fileInfo.flags.ToFileAccess(), fileInfo.flags.ToFileShare());
+        var path = GetPath(fileNamePtr);
+
+        // FUSE callback'leri senkron — libfuse zaten her isteği kendi iş
+        // parçacığında çalıştırıyor, burada bloklamak (indirme bitene kadar)
+        // güvenli ve beklenen davranış (gerçek ağ dosya sistemlerinin de
+        // yaptığı şey). .GetAwaiter().GetResult() deadlock riski taşımıyor
+        // çünkü SynchronizationContext yok (konsol/arka plan iş parçacığı).
+        EnsureRealContentDownloadedAsync(path).GetAwaiter().GetResult();
+
+        fileInfo.Context = File.Open(path, fileInfo.flags.ToFileMode(), fileInfo.flags.ToFileAccess(), fileInfo.flags.ToFileShare());
         return PosixResult.Success;
     }
 

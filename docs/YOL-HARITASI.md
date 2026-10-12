@@ -98,52 +98,55 @@ sanal sürücü desteği. Özet (ayrıntı `docs/KARARLAR.md` K18-K23):
 
 ---
 
-## FAZ 8 — Mount edilen dosyaların GERÇEK içeriği 🔴 EN YÜKSEK ÖNCELİK
+## FAZ 8 — Mount edilen dosyaların GERÇEK içeriği 🟡 UYGULANDI, DOĞRULAMA BEKLİYOR
 
 **Sorun:** FUSE mount gerçek (kernel seviyesinde) ama içindeki dosyalar
-hâlâ 0 baytlık yer tutucu. Kullanıcı sürücüyü açıp dosyaya tıkladığında
-boş bir dosya görüyor — bu tam olarak projenin "sahte başarı" dediği
-risk kalıbı: ürün çalışıyor GİBİ görünüyor ama asıl işi yapmıyor.
+hâlâ 0 baytlık yer tutucuydu.
 
-**Neden en öncelikli:** Geçen oturumun en büyük yatırımı (gerçek FUSE
-mount) bu olmadan kullanıcıya somut bir fayda sağlamıyor — yalnız boş
-klasörler gösteriyor.
+**✅ Uygulandı (2026-10-12, K25):** `CloudMirrorFsOperations.Open`
+dosya açılmadan önce, yerel yer tutucu DB'deki gerçek boyuttan küçükse
+`IStorageService.DownloadFileAsync` ile gerçek içeriği indirip yerel
+dosyanın üzerine yazıyor. `GetAttr` de artık indirmeden önce bile
+gerçek boyutu bildiriyor (dosya yöneticisinde "0 B" görünmesin diye).
+Test için `mount`/`unmount <accountId>` CLI komutları eklendi.
 
-**Adım (taslak, uygulamaya geçmeden önce netleştirilecek):**
-1. `CloudMirrorFsOperations.Open`'da dosya ilk açıldığında (lazy)
-   gerçek içeriği ilgili sağlayıcının API'sinden indirip yerel önbellek
-   dosyasına yazma mantığı eklenecek — `CloudStorageService`'te zaten
-   var olan indirme desenlerinden (`EditLocally` vb.) yararlanılabilir.
-2. Büyük dosyalarda tam indirmeyi beklemek mi (basit, yavaş) yoksa
-   parçalı/stream okuma mı (karmaşık, hızlı) — karar gerekiyor, ölçüm
-   olmadan seçilmeyecek.
-3. Yazma geri senkronu zaten `FileSystemWatcher` ile çalışıyor
-   (K22) — bu adım yalnız OKUMA tarafını tamamlıyor.
+**⚠️ DOĞRULAMA EKSİK:** Kod derleniyor, mantık incelemeyle doğru ama
+gerçek bir dosya indirmesiyle uçtan uca KANITLANAMADI — tek dolu
+hesabın (Google) token'ı ölü çıktı, operatör o an yeniden bağlanamadı.
+Ayrıntı ve sonraki adım: `docs/KARARLAR.md` K25.
 
-**Kim:** Claude Code (mimari karar + uygulama, karmaşık/riskli alan).
+**Kim:** Claude Code (uygulandı), **operatör** (makinenin başında
+Google'ı yeniden bağlayıp canlı doğrulama — tek yapabilen o).
 
 ---
 
-## FAZ 9 — Token yenileme ve OAuth kapsam eksikleri
+## FAZ 9 — Token yenileme ve OAuth kapsam eksikleri 🟡 UYGULANDI, DOĞRULAMA BEKLİYOR
 
-**Sorun 1 — Microsoft token yenileme başarısız:** MSAL'in
-`PublicClientApplicationBuilder.Create()` çağrısı her seferinde
-bellek-içi, kalıcı olmayan bir önbellekle taze nesne üretiyor;
-`AcquireTokenSilent` önceki interaktif girişi hiç bulamıyor.
-**Düzeltme:** MSAL'in `ITokenCache.SetBeforeAccess`/`SetAfterAccess`
-API'siyle diske kalıcı bir token önbelleği bağlanacak (iki yerde de —
-`AuthenticateMicrosoftAsync` ve `RefreshTokenAsync` AYNI
-`PublicClientApplicationBuilder` nesnesini/önbelleğini paylaşmalı).
+**Sorun 1 — Microsoft token yenileme başarısız:** Her çağrı ayrı,
+bellek-içi bir MSAL nesnesi üretiyordu, `AcquireTokenSilent` önceki
+girişi bulamıyordu (gerçek `sync-all` koşumunda "Token refresh FAILED"
+olarak ölçüldü).
 
-**Sorun 2 — Google Gmail senkronizasyonu `403 Insufficient
-Permission`:** Orijinal OAuth scope dizesi (`AuthenticationService.cs:43`)
-yalnız `email profile calendar drive` istiyor, gmail kapsamı hiç
-istenmemiş. **Düzeltme:** scope dizesine gmail kapsamı eklenip
-kullanıcının Google hesabını YENİDEN bağlaması gerekiyor (mevcut
-refresh token'a sonradan kapsam eklenemez).
+**✅ Uygulandı (2026-10-12, K26):** Microsoft'un resmi
+`Microsoft.Identity.Client.Extensions.Msal` paketiyle diske kalıcı,
+paylaşılan bir MSAL önbelleği bağlandı (`BuildMicrosoftAppAsync`,
+her iki çağrı yerinde ortak). Bu makinede Secret Service (KDE ksecretd)
+çalıştığı doğrulandı — önbellek şifreli saklanacak.
 
-**Kim:** Claude Code (ikisi de kod + gerçek hesapla doğrulama
-gerektiriyor).
+**Sorun 2 — Google Gmail `403 Insufficient Permission`:** OAuth scope
+dizesi gmail'i hiç istemiyordu; `CloudEmailService` ise kalıcı silme
+dahil tam Gmail erişimi kullanıyor.
+
+**✅ Uygulandı (2026-10-12, K26):** Scope dizesine
+`https://mail.google.com/` (tam erişim, kalıcı silme dahil her
+operasyonu kapsıyor) eklendi.
+
+**⚠️ DOĞRULAMA EKSİK (ikisi de):** Hiçbiri gerçek interaktif girişle
+canlı test edilmedi — operatörün tarayıcıda onay vermesi gerekiyor.
+Ayrıntı ve sonraki adım (tek oturumda hem Google hem Microsoft'u
+yeniden bağlama sırası): `docs/KARARLAR.md` K26.
+
+**Kim:** Claude Code (uygulandı), **operatör** (canlı doğrulama).
 
 ---
 
@@ -165,8 +168,18 @@ mı veriyor, sessiz mi kalıyor), sonra API anahtarı akışını (muhtemelen
 
 **✅ Bugün (2026-10-12):** Yol haritası gerçek duruma göre yeniden
 yazıldı, `derleme`/`test` kapılarındaki locale hatası düzeltildi (K24),
-ölü `MainWindow.axaml.cs` silindi. `tools/kapilar` → 8/8 yeşil.
+ölü `MainWindow.axaml.cs` silindi. FAZ 8 (gerçek dosya indirme, K25) ve
+FAZ 9 (Microsoft MSAL kalıcı önbellek + Gmail scope, K26) uygulandı,
+`tools/kapilar` → 8/8 yeşil, **ama ikisi de canlı doğrulama bekliyor**
+— operatör o an telefondan bağlıydı, interaktif OAuth onayı
+veremiyordu.
 
-**Sıradaki: FAZ 8 — mount edilen dosyaların gerçek içeriği.** Bu,
-geçen oturumun en büyük yatırımını (gerçek FUSE mount) kullanıcıya
-gerçekten faydalı hale getiren tek eksik adım.
+**Sıradaki: operatör makinenin başına geçince, TEK oturumda:**
+1. Google'ı yeniden bağla (yeni gmail scope + taze refresh token).
+2. Microsoft'u yeniden bağla, `sync-all` koştur — sessiz yenileme
+   gerçekten çalışıyor mu gör.
+3. `mount <accountId>` ile gerçek bir dosyaya eriş, içeriğin indiğini
+   doğrula.
+4. Hepsi başarılıysa K25/K26 "tamamlandı" işaretlenir, sıradaki FAZ 10
+   (AI asistan entegrasyonu) ele alınır.
+
