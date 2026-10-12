@@ -288,17 +288,32 @@ Docs export hatası) ve D04 (bellek sınırsız indirme) kodda doğrulanan
 gerçek bulgular, D02 kendi belgelediğimiz bir yanlışı ortaya çıkardı;
 kalan kabul edilen maddeler FAZ 11-13 olarak eklendi (§1.5).
 
-**Şu an başlanan: FAZ 8'in F02 düzeltmesi** — Google Docs/Sheets/Slides
-için `Files.Export()` yolu eklenecek (Claude Code, kod değişikliği,
-operatör etkileşimi gerektirmiyor).
+**✅ Aynı gün devam (K27):** F02 (Google Docs export), D02/D04 belge
+düzeltmeleri yapıldı.
 
-**Operatör makinenin başına geçince, TEK oturumda (K25/K26'nın asıl
-doğrulaması):**
-1. Google'ı yeniden bağla (yeni gmail scope + taze refresh token).
-2. Microsoft'u yeniden bağla, `sync-all` koştur — sessiz yenileme
-   gerçekten çalışıyor mu gör.
+**✅ Aynı gün devam (K28) — 🔴 KRİTİK:** Veritabanı şifrelemesi hiç
+çalışmıyordu (`.env`'de yanlış değişken adları), düzeltildi, eski
+şifresiz DB yedeklenip yeni şifreli DB oluşturuldu (yerel önbellek
+sıfırlandı). Ayrıca Yandex AI anahtarı ve senkron ayarları (15/30 dk
+tutarsızlığının asıl kök sebebi) kopukluğu düzeltildi.
+
+**✅ Operatör üç hesabı yeniden bağladı, `sync-all` gerçek veriyle
+koşturuldu (K29) — 🔴 KRİTİK BİR BAŞKA HATA DAHA BULUNDU VE
+DÜZELTİLDİ:** `FindAsync(accountId, messageId)` deseni projenin
+başından beri e-posta/takvim senkronunu gerçek veriyle HİÇ
+çalıştırmıyordu (composite-key hatası, 4 canlı yerde). Düzeltildi —
+Microsoft'ta ilk kez gerçek e-posta senkronu çalıştı (10 e-posta).
+
+**Operatör makinenin başına geçince, kalan açık işler:**
+1. **Gmail:** Google Cloud Console'da Gmail API'yi etkinleştir
+   (API Library → Gmail API → Enable) — kod sorunu değil, proje
+   seviyesinde API açılmamış.
+2. **Yandex Mail/Calendar:** Yandex OAuth uygulamasının panelinde
+   (oauth.yandex.com) Mail ve Calendar izin gruplarını ekle (şu an
+   yalnız Disk işaretli — K29'da not edildi, bu benim eksik kurulum
+   rehberliğimdi), sonra `auth-yandex`'i tekrar çalıştır.
 3. `mount <accountId>` ile hem bir PDF'e hem bir Google Doc'a eriş
-   (F02 düzeltmesi de dahil test edilsin), içeriğin indiğini doğrula.
-4. Hepsi başarılıysa K25/K26 "tamamlandı" işaretlenir, sıradaki FAZ 11
-   (güvenlik/veri bütünlüğü sertleştirmesi) ele alınır.
+   (F02 düzeltmesi test edilsin), içeriğin indiğini doğrula.
+4. Hepsi tamamsa sıradaki FAZ 11 (güvenlik/veri bütünlüğü
+   sertleştirmesi) ele alınır.
 

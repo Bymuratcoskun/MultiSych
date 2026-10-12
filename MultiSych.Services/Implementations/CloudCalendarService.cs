@@ -111,7 +111,12 @@ namespace MultiSych.Services.Implementations
                 await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
                 foreach (var ev in events)
                 {
-                    var existing = await dbContext.CachedEvents.FindAsync(ev.AccountId, ev.EventId);
+                    // K29: CalendarEventEntity'nin tek PK'si BaseEntity.Id — AccountId+EventId
+                    // composite key değil, FindAsync(2 değer) her zaman çöküyordu (aynı kök
+                    // sebep CloudEmailService'teki ile). Bu güne kadar hiç gerçek etkinlik
+                    // dönmediği için (hep "0 events") bu satıra hiç ulaşılmamıştı, gizli kaldı.
+                    var existing = await dbContext.CachedEvents.FirstOrDefaultAsync(
+                        e => e.AccountId == ev.AccountId && e.EventId == ev.EventId);
                     if (existing != null)
                     {
                         existing.Title = ev.Title ?? string.Empty;

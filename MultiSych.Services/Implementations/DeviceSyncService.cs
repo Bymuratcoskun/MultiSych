@@ -156,7 +156,9 @@ public sealed class DeviceSyncService : IDeviceSyncService
         var importedEmails = await importDb.CachedEmails.AsNoTracking().ToListAsync(ct);
         foreach (var email in importedEmails)
         {
-            var existing = await localDb.CachedEmails.FindAsync([email.AccountId, email.MessageId], ct);
+            // K29: FindAsync composite-key hatası (CloudEmailService'teki ile aynı kök sebep).
+            var existing = await localDb.CachedEmails.FirstOrDefaultAsync(
+                e => e.AccountId == email.AccountId && e.MessageId == email.MessageId, ct);
             if (existing == null)
                 localDb.CachedEmails.Add(email);
             else if (email.ReceivedDate > existing.ReceivedDate)
@@ -178,7 +180,9 @@ public sealed class DeviceSyncService : IDeviceSyncService
         var importedEvents = await importDb.CachedEvents.AsNoTracking().ToListAsync(ct);
         foreach (var ev in importedEvents)
         {
-            var existing = await localDb.CachedEvents.FindAsync([ev.AccountId, ev.EventId], ct);
+            // K29: FindAsync composite-key hatası (CloudCalendarService'teki ile aynı kök sebep).
+            var existing = await localDb.CachedEvents.FirstOrDefaultAsync(
+                e => e.AccountId == ev.AccountId && e.EventId == ev.EventId, ct);
             if (existing == null)
                 localDb.CachedEvents.Add(ev);
             else if (ev.UpdatedAt > existing.UpdatedAt)

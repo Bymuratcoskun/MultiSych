@@ -1209,3 +1209,83 @@ tarafın AYNI isimle eşleştiği grep ile doğrulanmalı.
 artık `.env`'deki bir satırın varlığına değil, gerçek dosya
 imzasının ölçülmesine dayanması — bir daha "true yazdım, çalışıyor
 sanıyordum" durumu sessizce yaşanmayacak.
+
+---
+
+## K29 — 🔴 KRİTİK: E-POSTA/TAKVİM SENKRONU PROJENİN BAŞINDAN BERİ GERÇEK VERİYLE HİÇ ÇALIŞMAMIŞTI — SİSTEMİK `FindAsync` HATASI DÜZELTİLDİ · 2026-10-12
+
+**Bağlam:** K28'in ardından operatör üç hesabı yeniden bağladı
+(DB sıfırlandığı için), `sync-all` gerçek verilerle koşturuldu.
+
+**🔴 Bulgu:** Microsoft hesabında gerçek e-postalar dönünce
+`System.ArgumentException: Entity type 'EmailMessageEntity' is
+defined with a single key property, but 2 values were passed to the
+'Find' method.` hatasıyla çöktü. Kök sebep:
+`dbContext.CachedEmails.FindAsync(email.AccountId, email.MessageId)`
+— ama `EmailMessageEntity : BaseEntity`'nin tek PK'si `BaseEntity.Id`
+(otomatik GUID), `AccountId`+`MessageId` EF Core'da composite key
+olarak hiç tanımlanmamış. `FindAsync` birden fazla değer alınca EF
+Core'un gerçek PK yapısını bekliyor, bizim "iş anahtarı" (business
+key) aramamızı DEĞİL.
+
+**Kapsam — grep ile tarandı, 10 çağrı yeri bulundu:**
+- ✅ **Canlı, düzeltildi (4 yer):** `CloudEmailService.cs` (2 yer —
+  `SyncEmailsAsync`, `DeleteEmailAsync`), `CloudCalendarService.cs`
+  (1 yer — `SyncEventsAsync`), `DeviceSyncService.cs` (2 yer —
+  `MergeEmailsAsync`, `MergeCalendarEventsAsync`). Hepsi
+  `FirstOrDefaultAsync(e => e.AccountId == ... && e.MessageId/EventId == ...)`
+  ile değiştirildi.
+- ⚫ **Ölü kod, dokunulmadı (5 yer):** `EmailService.cs` — `IEmailService`
+  DI'da `CloudEmailService`'e kayıtlı
+  (`ServiceCollectionExtensions.cs:41`), bu dosya hiç DI'dan
+  çözümlenmiyor, hiç çalışmıyor. K21/K23'teki
+  `GoogleAuthenticationService.cs` ölü dosya desenine birebir benziyor.
+
+**Neden bugüne kadar fark edilmedi:** Her üç sağlayıcı da ya daha
+önceki bir hata (401/403/auth) yüzünden bu satıra hiç ulaşamıyordu,
+ya da (Microsoft/Google takvim gibi) gerçekten 0 etkinlik/e-posta
+döndüğü için foreach döngüsü hiç çalışmıyordu. **Gerçek veri ilk kez
+bugün, üç hesap gerçekten yeniden bağlanıp `sync-all` koşturulunca
+aktığı için ortaya çıktı** — tam da projenin "oynamak/gerçek kullanım
+bir kapıdır" ilkesinin bir kez daha doğrulanması.
+
+**Kanıt (düzeltmeden önce/sonra, aynı koşum):**
+```
+Düzeltmeden önce: [ERR] Failed to sync emails for mc.mavibulut.1984@outlook.com.tr
+                  (ArgumentException, composite key)
+Düzeltmeden sonra: [INF] Successfully synced 10 emails for mc.mavibulut.1984@outlook.com.tr
+```
+`dotnet build` 0 hata, `tools/kapilar` 8/8 yeşil.
+
+**Açık kalan, bu düzeltmenin kapsamı DIŞINDA (ayrı sebepler):**
+1. **Gmail hâlâ 403 veriyor — ama artık FARKLI bir hata:** K26'nın
+   scope düzeltmesinden sonra "Insufficient Permission" gitti, yerine
+   `Gmail API has not been used in project ... or it is disabled`
+   geldi. Bu bir kod sorunu DEĞİL — operatörün Google Cloud Console
+   projesinde Gmail API'sinin API Library'den **etkinleştirilmesi**
+   gerekiyor (OAuth scope'u doğru olsa bile, API'nin kendisi proje
+   seviyesinde ayrıca açılmalı). Operatöre iletildi, açık iş.
+2. **Yandex e-posta (IMAP) ve takvim (CalDAV) kimlik doğrulaması
+   başarısız — kod hatası DEĞİL, eksik kurulum:** Yandex
+   authorization URL'inde (`AuthenticationService.cs:201`) hiç
+   `scope=` parametresi yok — yetkiler tamamen Yandex OAuth
+   uygulamasının kendi panelindeki izin seçimine bağlı. Operatöre
+   uygulamayı kurdururken yalnız Yandex.Disk izinlerini işaretletmiştim
+   (bu oturumun erken bir aşamasında) — Mail/Calendar hiç istenmedi.
+   **Bu benim eksik kurulum rehberliğim, yeni bir kod kusuru değil.**
+   Yandex'in kesin scope adlarını (`mail:imap_full` vb.) güvenilir
+   kaynaktan doğrulayamadım, tahmin edip koda yazmadım — operatörün
+   Yandex OAuth uygulama panelinde Mail/Calendar izin gruplarını
+   eklemesi ve `auth-yandex`'i tekrar çalıştırması gerekiyor.
+
+**Ders (en pahalısı bu oturumda):** "0 sonuç döndü" ile "kod zaten
+hiç çalışmadı" ayırt edilemez görünebilir — ikisi de sessizce
+"başarılı" loglanır. Gerçek veri akmadan (gerçek hesap, gerçek
+mesaj/etkinlik) bir senkron yolunun GERÇEKTEN çalıştığı iddia
+edilemez. Bu proje tarihinde e-posta/takvim senkronu hiçbir zaman
+gerçek veriyle test edilmemişti — bugüne kadar hep boş/hatalı
+koşumlardı.
+
+**Bu kararın imkânsız kıldığı:** "Senkron X kapı yeşil, demek ki
+çalışıyor" güvencesi — bu projede artık yalnız gerçek hesapla,
+gerçek veri dönene kadar hiçbir sync yolu "doğrulandı" sayılmayacak.

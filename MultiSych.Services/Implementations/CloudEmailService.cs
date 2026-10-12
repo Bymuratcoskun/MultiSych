@@ -571,7 +571,10 @@ namespace MultiSych.Services.Implementations
             if (success)
             {
                 await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
-                var entity = await dbContext.CachedEmails.FindAsync(credentials.AccountId, messageId);
+                // K29: FindAsync(accountId, messageId) composite-key hatası (yukarıdaki
+                // SyncEmailsAsync'teki ile aynı kök sebep) — düzeltildi.
+                var entity = await dbContext.CachedEmails.FirstOrDefaultAsync(
+                    e => e.AccountId == credentials.AccountId && e.MessageId == messageId);
                 if (entity != null)
                 {
                     dbContext.CachedEmails.Remove(entity);
@@ -736,7 +739,15 @@ namespace MultiSych.Services.Implementations
                 await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
                 foreach (var email in emails)
                 {
-                    var existing = await dbContext.CachedEmails.FindAsync(email.AccountId, email.MessageId);
+                    // EmailMessageEntity'nin tek PK'si BaseEntity.Id (otomatik GUID) —
+                    // AccountId+MessageId EF Core'da composite key olarak tanımlı DEĞİL.
+                    // FindAsync(accountId, messageId) bu yüzden "tek key property ama 2
+                    // değer verildi" hatasıyla her zaman çöküyordu (K29, gerçek sync-all
+                    // koşumunda Microsoft hesabıyla yakalandı — Google/Yandex aynı satıra
+                    // hiç ulaşamadan başka sebeplerle duruyordu, aynı hata onlarda da
+                    // vardı, yalnız gizliydi). Doğru arama: iş anahtarına göre sorgula.
+                    var existing = await dbContext.CachedEmails.FirstOrDefaultAsync(
+                        e => e.AccountId == email.AccountId && e.MessageId == email.MessageId);
                     if (existing != null)
                     {
                         existing.Subject = email.Subject ?? string.Empty;
