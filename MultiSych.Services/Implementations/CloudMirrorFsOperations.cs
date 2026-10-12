@@ -39,6 +39,41 @@ internal sealed class CloudMirrorFsOperations(
 
     public string BasePath { get; } = basePath;
 
+    // K31 — KANITLANMIŞ ÜÇÜNCÜ PARTİ KÜTÜPHANE HATASI: LTRData.FuseDotNet'in
+    // PosixOpenFlags enum'u (Create=0x200, Truncate=0x400, CreateNew=0x800)
+    // BSD/macOS bit değerlerini kullanıyor. Bu makinede /usr/include/bits/
+    // fcntl-linux.h ile doğrulandı: gerçek Linux değerleri O_CREAT=0x40,
+    // O_EXCL=0x80, O_TRUNC=0x200, O_APPEND=0x400, O_NONBLOCK=0x800.
+    // Sonuç: `file`/Dolphin gibi O_NONBLOCK (0x800) ile açan HER araç,
+    // kütüphanenin ToFileMode()'u tarafından yanlışlıkla "CreateNew" sanılıyor
+    // ve .NET "CreateNew + Read erişimi birleştirilemez" diye çöküyordu —
+    // mount'taki hiçbir dosya gerçek bir uygulamayla açılamıyordu (yalnız
+    // `cat`, O_NONBLOCK kullanmadığı için tesadüfen çalışıyordu). Kendi doğru
+    // çevirimizi yazıp kütüphaneninkini (yalnız bu iki metotta) atlıyoruz.
+    private const int LinuxOCreat = 0x40;
+    private const int LinuxOExcl = 0x80;
+    private const int LinuxOTrunc = 0x200;
+    private const int LinuxOAppend = 0x400;
+    private const int LinuxOAccMode = 0x3;
+
+    private static FileMode LinuxFlagsToFileMode(int rawFlags)
+    {
+        var creat = (rawFlags & LinuxOCreat) != 0;
+        var excl = (rawFlags & LinuxOExcl) != 0;
+        if (creat && excl) return FileMode.CreateNew;
+        if (creat) return FileMode.Create;
+        if ((rawFlags & LinuxOTrunc) != 0) return FileMode.Truncate;
+        if ((rawFlags & LinuxOAppend) != 0) return FileMode.Append;
+        return FileMode.Open;
+    }
+
+    private static FileAccess LinuxFlagsToFileAccess(int rawFlags) => (rawFlags & LinuxOAccMode) switch
+    {
+        0 => FileAccess.Read,      // O_RDONLY — access mode alt iki bit tüm Unix türevlerinde ortak, kütüphanenin burada hatası yok
+        1 => FileAccess.Write,     // O_WRONLY
+        _ => FileAccess.ReadWrite  // O_RDWR
+    };
+
     private string GetPath(ReadOnlyNativeMemory<byte> fileNamePtr)
         => Path.Join(BasePath, FuseHelper.GetString(fileNamePtr));
 
@@ -208,8 +243,28 @@ internal sealed class CloudMirrorFsOperations(
         // çünkü SynchronizationContext yok (konsol/arka plan iş parçacığı).
         EnsureRealContentDownloadedAsync(path).GetAwaiter().GetResult();
 
-        fileInfo.Context = File.Open(path, fileInfo.flags.ToFileMode(), fileInfo.flags.ToFileAccess(), fileInfo.flags.ToFileShare());
-        return PosixResult.Success;
+        // K31: kütüphanenin flags.ToFileMode()/ToFileAccess() yerine yukarıdaki
+        // doğru Linux çevirimiz kullanılıyor — bkz. sınıf başındaki açıklama.
+        var rawFlags = (int)fileInfo.flags;
+        var mode = LinuxFlagsToFileMode(rawFlags);
+        var access = LinuxFlagsToFileAccess(rawFlags);
+        // CreateNew/Create ile Read erişimi birleşimi .NET'te geçersiz — gerçek
+        // bir "oluştur" isteği her zaman en az yazma izni de taşır.
+        if ((mode is FileMode.CreateNew or FileMode.Create) && access == FileAccess.Read)
+        {
+            access = FileAccess.ReadWrite;
+        }
+
+        try
+        {
+            fileInfo.Context = File.Open(path, mode, access, FileShare.ReadWrite);
+            return PosixResult.Success;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "FUSE Open() başarısız: {Path} (rawFlags=0x{RawFlags:X}, mode={Mode}, access={Access})", path, rawFlags, mode, access);
+            throw;
+        }
     }
 
     public PosixResult OpenDir(ReadOnlyNativeMemory<byte> fileNamePtr, ref FuseFileInfo fileInfo)

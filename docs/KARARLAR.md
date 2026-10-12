@@ -1349,3 +1349,75 @@ Singleton servisin temizlik mantığı "kod var, çalışıyor sanılıyor"
 durumunda kalamaz — host'un gerçekten dispose edildiği, log
 satırıyla (`Disposing VirtualDriveService...`) her çıkışta
 doğrulanabilir.
+
+---
+
+## K31 — 🔴 KRİTİK: ÜÇÜNCÜ PARTİ KÜTÜPHANE HATASI — MOUNT'TAKİ HİÇBİR DOSYA GERÇEK UYGULAMAYLA AÇILAMIYORDU · 2026-10-12
+
+**Bulgu (F02'nin GUI üzerinden canlı doğrulaması sırasında yakalandı):**
+Operatör Google Drive'ı GUI'den mount etti. Terminalden `ls -la` doğru
+boyutları gösteriyordu (K27'nin GetAttr düzeltmesi çalışıyordu), ama
+`file` komutu her dosya için **"no read permission"** diyordu ve
+Dolphin "Ağ" bölümünde "erişim engellendi" gösterdi.
+
+**Teşhis:** `Open()`'a geçici bir `try/catch` + ayrıntılı log eklenip
+yeniden denendi. Gerçek hata:
+```
+System.ArgumentException: Combining FileMode: CreateNew with
+FileAccess: Read is invalid.
+```
+`fileInfo.flags.ToFileMode()` sıradan bir salt-okunur açma isteğini
+(`O_NONBLOCK` bayrağı set edilmiş, `file`/çoğu gerçek uygulamanın
+yaptığı gibi) yanlışlıkla `FileMode.CreateNew` sanıyordu.
+
+**Kök sebep (kesin, başka bir açıklamaya gerek yok) — LTRData.FuseDotNet'in
+`PosixOpenFlags` enum'u YANLIŞ platformun bit değerlerini kullanıyor:**
+```
+Kütüphanenin enum'u:  Create=0x200  Truncate=0x400  CreateNew=0x800
+Gerçek Linux değeri (bu makinede /usr/include/bits/fcntl-linux.h
+ile doğrulandı): O_CREAT=0x40  O_EXCL=0x80  O_TRUNC=0x200
+                 O_APPEND=0x400  O_NONBLOCK=0x800
+```
+Kütüphane BSD/macOS'un bit değerlerini kullanmış — Linux'ta bambaşka
+bitler. Sonuç: `O_NONBLOCK` (0x800, Linux'ta) kütüphane tarafından
+`CreateNew` (kendi 0x800'ü) sanılıyor. `cat` `O_NONBLOCK` set
+etmediği için tesadüfen çalışıyordu, bu yüzden ilk FUSE spike testinde
+(K22) fark edilmemişti — **ama `file`, Dolphin ve muhtemelen çoğu
+gerçek masaüstü uygulaması bu bayrağı set ediyor, hepsi çöküyordu.**
+Yani mount'un kendisi, içerik indirme, boyut raporlama — hepsi
+doğruydu, ama **mount'taki hiçbir dosya gerçek bir uygulamayla hiç
+açılamıyordu.**
+
+**Düzeltme:** Kütüphanenin `ToFileMode()`/`ToFileAccess()`'ı yerine,
+doğrulanmış gerçek Linux bit değerleriyle kendi çevirimiz
+(`LinuxFlagsToFileMode`/`LinuxFlagsToFileAccess`) yazıldı, yalnız
+`Open()` içinde kullanılıyor (access-mode alt iki bit — Read/Write/
+ReadWrite — tüm Unix türevlerinde ortak, orada kütüphanenin hatası
+yok, dokunulmadı).
+
+**Kanıt (düzeltmeden önce/sonra, gerçek mount + gerçek dosyalarla):**
+```
+Önce: file "Adsız doküman" → "no read permission"
+Sonra: file "Adsız doküman" → "Microsoft Word 2007+"
+       file "RiskRaporu.pdf" → "PDF document, version 1.4, 20 page(s)"
+       İlk 4 bayt: PK\x03\x04 (gerçek ZIP/docx imzası, bozuk değil)
+```
+`dotnet build` 0 hata, `tools/kapilar` 8/8 yeşil.
+
+**Not — upstream'e bildirilmeli (henüz yapılmadı):** Bu, LTRData.FuseDotNet
+paketinin kendi hatası, bizim kodumuzun değil. Projenin GitHub sayfasına
+(`github.com/LTRData/FuseDotNet`) bir issue açılması faydalı olur —
+paket Linux hedeflediğini iddia ediyor (`Environment: Linux x86, x64`)
+ama `PosixOpenFlags`'ı BSD değerleriyle tanımlamış.
+
+**Ders:** K22'deki ilk FUSE spike testi `cat` ile "çalıştı" denildi ve
+bu yeterli sayıldı — ama `cat`'in kendine özgü (O_NONBLOCK'suz) açma
+davranışı, kütüphanenin GERÇEK, Dolphin/`file`/muhtemelen çoğu
+uygulamayı etkileyen bir hatasını gizliyordu. **Tek bir araçla
+(`cat`) yapılan "çalışıyor" testi yetersizdi — gerçek, çeşitli
+araçlarla (bugün: `file`, Dolphin) tekrar test edilince ortaya çıktı.**
+
+**Bu kararın imkânsız kıldığı:** "FUSE mount çalışıyor" iddiasının
+yalnızca `cat`/metadata kontrolüyle kanıtlanmış sayılması — bundan
+sonra en az bir GERÇEK masaüstü uygulamasıyla (dosya yöneticisi,
+görüntüleyici) açılış denenmeden bu iddia atılmayacak.
