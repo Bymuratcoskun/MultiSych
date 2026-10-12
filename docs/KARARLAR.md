@@ -1526,3 +1526,74 @@ gerektirir (operatöre sorulmadan bırakıldı).
 **Bu kararın imkânsız kıldığı:** K22'den beri "hesap neden çoğalıyor,
 bilinmiyor" belirsizliği — artık kesin biliniyor ve yapısal olarak
 (UNIQUE değil ama upsert-by-business-key ile) imkânsız kılındı.
+
+---
+
+## K34 — DERİN TEMİZLİK: ~364 MB YANLIŞLIKLA COMMIT EDİLMİŞ İKİLİ BUILD ÇIKTISI + 3 ÖLÜ DOSYA KALDIRILDI · 2026-10-12
+
+**Operatör talebi:** "Projede derin temizlik yapalım. gereksiz ne
+varsa silelim, gereksiz kod bloklarını kaldıralım. Çöp namına ne
+varsa sil."
+
+**Tarama yöntemi:** Önce silmek yerine önce listeleme — her kalemin
+gerçekten çöp olduğu (referanssız, üretilmiş/geçici, ya da başka bir
+projeye ait) tek tek doğrulandı, operatöre liste halinde sunulup
+onay alındıktan SONRA silindi.
+
+**Bulunan ve silinen 6 kalem:**
+
+1. **`src/publish/` (183 MB, 311 dosya)** — `makepkg`'in kendisi
+   oluşturup kendisi silen geçici kaynak-paket dizini. Kanıt:
+   `build-package.sh`'in kendi içinde `rm -rf pkg/ src/` satırı var —
+   bu dizinin hiçbir zaman commit'e girmemesi gerekiyordu. `git log`
+   ile tek commit'te (`c302688`, "🚀 Bulut Göçü: Firebase Studio
+   Hazırlığı") eklendiği görüldü — terk edilmiş bir bulut göçü
+   denemesinden kalma.
+2. **`pkg/multisych/` (181 MB, 318 dosya)** — aynı makepkg'in geçici
+   paket çıkış dizini (derlenmiş Avalonia `.dll`'leri dahil). Aynı
+   commit'te eklenmiş.
+3. **`MultiSych.Desktop/.avalonia-build-tasks/` (21 dosya)** —
+   Avalonia XAML derleyicisinin ikili build-cache dosyaları (`file`
+   çıktısı: "data", kaynak kodu değil). `.gitignore`'daki `**/obj/`
+   deseni bu özel dizin adını yakalamıyordu.
+4. **`.nobom/backups/20260626_195011/`** — **başka bir projeye**
+   (`Project_Deviation/CoreManager.cs`) ait bir yedek. NoBOMSuite
+   aracının `manifest.json`'ı hedef yolu açıkça gösteriyordu — bu
+   repoya kazara düşmüştü, multisych ile hiç ilgisi yok.
+5. **`.idx/dev.nix`** — terk edilmiş Firebase Studio/Project IDX göçü
+   denemesinin kalıntısı, `.NET 8` paketi istiyordu (proje artık
+   `.NET 10`). `.gitignore` zaten `.idx/`'i yeni dosyalar için
+   kapatıyordu ama bu dosya daha önce zorla eklenmişti.
+6. **`DesktopServiceCollectionExtensions.cs` (repo kökünde)** — hiçbir
+   `.csproj` tarafından derlenmiyordu (repo kökünde, hiçbir proje
+   klasörünün içinde değil — `MultiSych.Desktop.csproj`'da onu
+   kapsayacak bir wildcard yok), tanımladığı `AddMultiSychViewModels`
+   hiçbir yerden çağrılmıyordu (`grep` yalnız kendi tanımını buldu).
+   Gerçek DI kaydı zaten `MultiSych.Desktop/Configuration` altında
+   başka bir yerde yapılıyor — bu dosya baştan beri ölüydü.
+
+**Dokunulmayan, çöp sayılmayan:** `docs/IS-PAKETI-*.md` dosyaları
+eski ama her biri `KARARLAR.md`'deki gerçek kararlara (K5, K7, K10-K12,
+K14, K16, K18...) bağlı worklog niteliğinde — operatör kuralı "önemli
+her işlem worklog'a" bunları çöp saymıyor, silinmedi. `logs/*.txt`
+zaten `.gitignore`'da, repoya hiç girmiyor — yerel, operatöre
+sorulmadan dokunulmadı.
+
+**`.gitignore`'a eklenen 3 kural** (tekrarını önlemek için):
+`/pkg/`, `/src/`, `**/.avalonia-build-tasks/`, `.nobom/`.
+
+**Kanıt:** Temizlik öncesi ve sonrası `dotnet build` 0 hata,
+`tools/kapilar` 8/8 yeşil — hiçbir gerçek işlev etkilenmedi. Commit
+`6986b57`: 655 dosya değişti, 12 satır eklendi (`.gitignore`), 12.285
+satır (ikili dosyalar dahil) silindi.
+
+**Bilinçli sınırlama:** Bu, çalışma ağacından kaldırma — geri
+alınabilir, git geçmişinde eski blob'lar duruyor. `.git` dizininin
+kendisi (66 MB) bu silinen dosyaların geçmiş sürümlerini hâlâ
+içeriyor; onu küçültmek geçmişi yeniden yazmak (`git filter-repo` +
+force-push) gerektirir — bu, operatöre sorulmadan yapılmayacak ayrı
+ve çok daha riskli bir iş, bu kararın kapsamı DEĞİL.
+
+**Bu kararın imkânsız kıldığı:** `pkg/`/`src/`/`.avalonia-build-tasks/`/
+`.nobom/` içeriğinin bir daha sessizce commit'e girmesi — artık
+`.gitignore` bunları en baştan engelliyor.
